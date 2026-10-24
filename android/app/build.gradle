@@ -1,0 +1,53 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace = "com.example.edit_video"
+    compileSdk = 35
+    ndkVersion = flutter.ndkVersion
+
+    defaultConfig {
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        applicationId = "com.example.edit_video"
+        // Media3 Transformer (1.4.1) requires minSdk 19 (Android 4.4 KitKat).
+        minSdk = 21
+        targetSdk = 35
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    // Jetpack Media3 Transformer — rendu vidéo réel (MediaCodec + OpenGL).
+    // Tous les modules Media3 doivent utiliser la même version.
+    // 1.4.1 : minSdk 19, déjà partiellement extrait dans le cache local.
+    def media3Version = "1.4.1"
+    implementation "androidx.media3:media3-transformer:${media3Version}"
+    implementation "androidx.media3:media3-effect:${media3Version}"
+    implementation "androidx.media3:media3-common:${media3Version}"
+}

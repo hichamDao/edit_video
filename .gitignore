@@ -1,0 +1,36 @@
+﻿# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Windows generated files
+windows/flutter/ephemeral/
+
+# Android generated files
+android/.gradle/
+android/local.properties
+
+# iOS generated files
+ios/Flutter/ephemeral/
+
+# Java memory dumps
+*.hprof
+
+# Flutter generated files
+.dart_tool/
+build/

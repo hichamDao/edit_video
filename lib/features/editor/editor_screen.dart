@@ -397,9 +397,9 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: Center(child: Text(seg.name, style: const TextStyle(color: Colors.white, fontSize: 9))),
                 ),
               ),
-              childWhenDragging: Container(width: ((seg.clip?.effectiveDuration ?? seg.timeRange.duration).inMilliseconds / 1000 * 60).clamp(40, 400).toDouble()),
+              childWhenDragging: Container(width: ((seg.clip?.effectiveDuration ?? seg.timeRange.duration).inMilliseconds / 1000 * 60).clamp(40.0, double.infinity).toDouble()),
               child: Container(
-                width: ((seg.clip?.effectiveDuration ?? seg.timeRange.duration).inMilliseconds / 1000 * 60).clamp(40.0, 400.0),
+                width: ((seg.clip?.effectiveDuration ?? seg.timeRange.duration).inMilliseconds / 1000 * 60).clamp(40.0, double.infinity).toDouble(),
                 decoration: BoxDecoration(
                   color: candidate.isNotEmpty ? Colors.amber : (selected ? Colors.blueAccent : (track.type == TrackType.video ? Colors.blue : Colors.green)),
                   borderRadius: BorderRadius.circular(4),

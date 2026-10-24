@@ -305,7 +305,7 @@ class _EditorScreenState extends State<EditorScreen> {
                               children: List.generate(
                                 (_project!.duration.inSeconds + 2).ceil(),
                                 (i) => Container(
-                                  width: 100,
+                                  width: 60,
                                   height: double.infinity,
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -389,7 +389,9 @@ class _EditorScreenState extends State<EditorScreen> {
               feedback: Material(
                 color: Colors.transparent,
                 child: Container(
-                  width: ((seg.clip?.effectiveDuration ?? seg.timeRange.duration).inMilliseconds / 1000 * 60).clamp(80, 400).toDouble(),
+                  width: ((seg.clip?.effectiveDuration ??
+    seg.timeRange.duration).inMilliseconds / 1000 * 60)
+    .clamp(1.0, double.infinity),
                   height: 48,
                   decoration: BoxDecoration(color: Colors.blueAccent, borderRadius: BorderRadius.circular(4)),
                   child: Center(child: Text(seg.name, style: const TextStyle(color: Colors.white, fontSize: 9))),

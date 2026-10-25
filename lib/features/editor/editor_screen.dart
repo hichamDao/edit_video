@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +8,6 @@ import 'package:flutter/rendering.dart' as rendering;
 
 import '../../core/project_holder.dart';
 import '../../models/capcut_models.dart';
-import '../../services/export_service.dart';
 import '../../services/segment_service.dart';
 import '../../services/video_metadata_service.dart';
 
@@ -21,7 +20,6 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final ProjectServiceImpl _projectService = ProjectServiceImpl();
-  final ExportService _exportService = ExportService();
   final VideoMetadataService _metadataService = VideoMetadataService();
   final Uuid _uuid = const Uuid();
 
@@ -270,6 +268,25 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // Commence à la position de rognage du clip sélectionné.
       await controller.seekTo(clip!.trimStart);
+
+      // Le fichier source est lu en entier : on arrête la lecture à la fin du
+      // clip (rognage inclus) et on synchronise la tête de lecture.
+      final sourceEnd = clip.trimStart + segment.timeRange.duration;
+      controller.addListener(() {
+        if (!mounted || !identical(_videoController, controller)) return;
+        final value = controller.value;
+        if (!value.isPlaying) return;
+        var local = value.position - clip.trimStart;
+        if (value.position >= sourceEnd) {
+          controller.pause();
+          controller.seekTo(sourceEnd);
+          local = segment.timeRange.duration;
+        }
+        if (local < Duration.zero) local = Duration.zero;
+        setState(() {
+          _playheadPosition = segment.timeRange.start + local;
+        });
+      });
 
       if (!mounted || !identical(_videoController, controller)) {
         await controller.dispose();

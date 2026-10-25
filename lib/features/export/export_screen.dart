@@ -191,7 +191,7 @@ class _ExportScreenState extends State<ExportScreen> {
                       ),
                     if (_exportService.status == ExportStatus.failed)
                       Text('Echec: ${_exportService.message}',
-                          style: TextStyle(color: Colors.red, fontSize: 16)),
+                          style: const TextStyle(color: Colors.red, fontSize: 16)),
                     if (_exportService.status == ExportStatus.unsupported)
                       const Text(
                         'Export natif non disponible sur cette plateforme',

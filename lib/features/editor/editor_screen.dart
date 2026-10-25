@@ -150,13 +150,32 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {});
   }
 
-  void _moveSelectedUp() {
+  // Coupe le clip sélectionné à la position de lecture de l'aperçu.
+  void _splitAtPlayhead() {
+    final seg = _selectedSegment;
+    final clip = seg?.clip;
+    final ctrl = _videoController;
+    if (seg == null || clip == null || ctrl == null || !ctrl.value.isInitialized) return;
+    final at = seg.timeRange.start + (ctrl.value.position - clip.trimStart);
+    if (at <= seg.timeRange.start || at >= seg.timeRange.end) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Mettez la lecture en pause à l\'intérieur du clip pour couper')));
+      return;
+    }
+    ctrl.pause();
+    _splitSelected(at);
+  }
+
+  void _deleteSelected() {
     if (_project == null || _selectedSegment == null) return;
+    final id = _selectedSegment!.id;
     final track = _project!.tracks.firstWhere(
-      (t) => t.segments.any((s) => s.id == _selectedSegment!.id),
+      (t) => t.segments.any((s) => s.id == id),
       orElse: () => _project!.tracks.first,
     );
-    _moveSegment(track, _selectedSegment!, -1);
+    _projectService.removeSegment(_project!, track.id, id);
+    _selectedSegment = null;
+    _recomputeTimeline();
   }
 
   String _fmt(Duration d) {
@@ -360,8 +379,9 @@ class _EditorScreenState extends State<EditorScreen> {
       top: 8,
       bottom: 8,
       child: DragTarget<Segment>(
-        onWillAccept: (data) => data != null && data.id != seg.id,
-        onAccept: (data) {
+        onWillAcceptWithDetails: (details) => details.data.id != seg.id,
+        onAcceptWithDetails: (details) {
+          final data = details.data;
           final tidx = track.segments.indexWhere((s) => s.id == data.id);
           if (tidx < 0) return;
           if (tidx == idx) return;
@@ -460,6 +480,18 @@ class _EditorScreenState extends State<EditorScreen> {
                                   },
                                   icon: const Icon(Icons.arrow_downward, size: 18),
                                   label: const Text('Descendre'),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _splitAtPlayhead,
+                                  icon: const Icon(Icons.call_split, size: 18),
+                                  label: const Text('Couper'),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _deleteSelected,
+                                  icon: const Icon(Icons.delete, size: 18),
+                                  label: const Text('Supprimer'),
                                 ),
                                 const SizedBox(width: 8),
                                 ElevatedButton.icon(

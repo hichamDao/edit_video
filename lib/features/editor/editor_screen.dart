@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -1325,7 +1325,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 _buildPlayheadControls(),
                 const Divider(height: 1),
-                _buildActions(),
+                SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.only(bottom: 8),
+                  child: _buildActions(),
+                ),
               ],
             ),
           ),

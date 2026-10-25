@@ -1,4 +1,4 @@
-package com.example.edit_video
+﻿package com.example.edit_video
 
 import android.content.Context
 import android.content.ContentValues
@@ -6,7 +6,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.net.Uri
 import androidx.media3.common.Effect
-import androidx.media3.common.Effects
+import androidx.media3.transformer.Effects
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
@@ -47,15 +47,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Pont natif Media3 Transformer — exécute un export vidéo réel.
+ * Pont natif Media3 Transformer â€” exÃ©cute un export vidÃ©o rÃ©el.
  *
  * API cible : Media3 1.4.1 (minSdk 19). La configuration d'export passe par
- * `Transformer.Builder.setTransformationRequest(TransformationRequest)` (dépréciée mais
- * publiquement accessible en 1.4.1). Les paramètres avancés (outputHeight, MIME types)
- * sont passés via le Builder interne.
+ * `Transformer.Builder.setTransformationRequest(TransformationRequest)` (dÃ©prÃ©ciÃ©e mais
+ * publiquement accessible en 1.4.1). Les paramÃ¨tres avancÃ©s (outputHeight, MIME types)
+ * sont passÃ©s via le Builder interne.
  *
  * Communication : MethodChannel "com.example.edit_video/export".
- * Entrées (JSON) :
+ * EntrÃ©es (JSON) :
  *   - "composition" : [{ "path", "startMs", "durationMs" }, ...]
  *   - "outputPath" : String
  *   - "videoMimeType" : String (ex "video/avc1")
@@ -177,7 +177,7 @@ class Media3ExportService(
         transformer = builder.build()
         transformer?.start(composition, outputPath)
 
-        // Polling des progrès (Media3 1.4.1 n'a pas de callback de progression direct)
+        // Polling des progrÃ¨s (Media3 1.4.1 n'a pas de callback de progression direct)
         startProgressPolling()
     }
 

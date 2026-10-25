@@ -1,0 +1,241 @@
+﻿1 package com.example.edit_video
+2 
+3 import android.content.Context
+4 import android.content.ContentValues
+5 import android.os.Build
+6 import android.provider.MediaStore
+7 import android.net.Uri
+8 import androidx.media3.common.Effect
+9 import androidx.media3.common.Effects
+10 import androidx.media3.common.audio.AudioProcessor
+11 import androidx.media3.common.audio.ChannelMixingAudioProcessor
+12 import androidx.media3.common.audio.ChannelMixingMatrix
+13 import androidx.media3.common.audio.SonicAudioProcessor
+14 import androidx.media3.effect.Brightness
+15 import androidx.media3.effect.Contrast
+16 import androidx.media3.effect.HslAdjustment
+17 import androidx.media3.effect.RgbMatrix
+18 import androidx.media3.effect.OverlayEffect
+19 import androidx.media3.effect.OverlaySettings
+20 import androidx.media3.effect.SpeedChangeEffect
+21 import androidx.media3.effect.TextOverlay
+22 import android.graphics.Color
+23 import android.text.SpannableString
+24 import android.text.Spanned
+25 import android.text.style.AbsoluteSizeSpan
+26 import android.text.style.ForegroundColorSpan
+27 import com.google.common.collect.ImmutableList
+28 import androidx.media3.effect.Presentation
+29 import androidx.media3.transformer.DefaultEncoderFactory
+30 import androidx.media3.transformer.VideoEncoderSettings
+31 import java.io.File
+32 import android.os.Handler
+33 import android.os.Looper
+34 import androidx.media3.common.C
+35 import androidx.media3.common.MimeTypes
+36 import androidx.media3.common.MediaItem
+37 import androidx.media3.transformer.Composition
+38 import androidx.media3.transformer.EditedMediaItem
+39 import androidx.media3.transformer.EditedMediaItemSequence
+40 import androidx.media3.transformer.ExportException
+41 import androidx.media3.transformer.ExportResult
+42 import androidx.media3.transformer.ProgressHolder
+43 import androidx.media3.transformer.TransformationRequest
+44 import androidx.media3.transformer.Transformer
+45 import io.flutter.plugin.common.MethodChannel
+46 import org.json.JSONArray
+47 import org.json.JSONObject
+48 
+49 /**
+50  * Pont natif Media3 Transformer — exécute un export vidéo réel.
+51  *
+52  * API cible : Media3 1.4.1 (minSdk 19). La configuration d'export passe par
+53  * `Transformer.Builder.setTransformationRequest(TransformationRequest)` (dépréciée mais
+54  * publiquement accessible en 1.4.1). Les paramètres avancés (outputHeight, MIME types)
+55  * sont passés via le Builder interne.
+56  *
+57  * Communication : MethodChannel "com.example.edit_video/export".
+58  * Entrées (JSON) :
+59  *   - "composition" : [{ "path", "startMs", "durationMs" }, ...]
+60  *   - "outputPath" : String
+61  *   - "videoMimeType" : String (ex "video/avc1")
+62  *   - "audioMimeType" : String (ex "audio/mp4a")
+63  *   - "outputHeight" : Int (0 = auto)
+64  * Sorties :
+65  *   - "progress" : { "progress" (0..1), "state" ("preparing"|"processing"|"completed"|"failed"), "message" }
+66  *   - "done" : { "outputPath" }
+67  *   - "error" : { "code", "message" }
+68  */
+69 class Media3ExportService(
+70     private val context: Context,
+71     private val channel: MethodChannel
+72 ) {
+73 
+74     private var transformer: Transformer? = null
+75     private val mainHandler = Handler(Looper.getMainLooper())
+76     private var progressHandler: Handler? = null
+77     private var progressPolling = false
+78     private var outputPath: String = ""
+79 
+80     fun startExport(
+81         compositionJson: String,
+82         outputPath: String,
+83         videoMimeType: String? = null,
+84         audioMimeType: String? = null,
+85         outputHeight: Int = 0,
+86         bitrate: Int = 0,
+87         includeAudio: Boolean = true
+88     ) {
+89         cancelExport()
+90         this.outputPath = outputPath
+91         val parsed = try {
+92             parseComposition(compositionJson)
+93         } catch (e: Exception) {
+94             sendError("ERR_PARSE", "Composition JSON invalide: ${e.message}")
+95             return
+96         }
+97 
+98         val videoItems = parsed.first
+99         val audioItems = parsed.second
+100         val textItems = parsed.third
+101         if (videoItems.isEmpty() && audioItems.isEmpty()) { // les textes seuls n'ont rien a exporter
+102             sendError("ERR_EMPTY", "Aucun clip dans la composition")
+103             return
+104         }
+105 
+106         val sequences = mutableListOf<EditedMediaItemSequence>()
+107         if (videoItems.isNotEmpty()) {
+108             sequences.add(EditedMediaItemSequence(
+109                 videoItems.map { buildItem(it, !includeAudio, outputHeight) }))
+110         }
+111         if (audioItems.isNotEmpty() && includeAudio) {
+112             sequences.add(EditedMediaItemSequence(
+113                 audioItems.map { buildItem(it, false, 0) }))
+114         }
+115         if (sequences.isEmpty()) {
+116             sendError("ERR_EMPTY", "Aucune piste a exporter (audio desactive)")
+117             return
+118         }
+119         val compositionBuilder = Composition.Builder(sequences)
+120         if (textItems.isNotEmpty()) {
+121             val overlays = textItems.map { TimedTextOverlay(it, outputHeight) }
+122             compositionBuilder.setEffects(
+123                 Effects(listOf(), listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays))))
+124             )
+125         }
+126         val composition = compositionBuilder.build()
+127 
+128         val requestBuilder = TransformationRequest.Builder()
+129         videoMimeType?.let { requestBuilder.setVideoMimeType(it) }
+130         audioMimeType?.let { requestBuilder.setAudioMimeType(it) }
+131         val request = requestBuilder.build()
+132 
+133         val builder = Transformer.Builder(context)
+134             .setTransformationRequest(request)
+135             .addListener(object : Transformer.Listener {
+136                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+137                     progressPolling = false
+138                     // Copie vers la galerie hors du thread principal (fichiers volumineux).
+139                     Thread {
+140                         try {
+141                             val publicUri = publishToGallery(outputPath)
+142                             File(outputPath).delete()
+143                             sendDone(publicUri)
+144                         } catch (e: Exception) {
+145                             sendError("ERR_GALLERY", "Export encode mais sauvegarde galerie echouee: ${e.message}")
+146                         }
+147                     }.start()
+148                 }
+149 
+150                 override fun onError(
+151                     composition: Composition,
+152                     exportResult: ExportResult,
+153                     exportException: ExportException
+154                 ) {
+155                     sendError("ERR_EXPORT", "Echec de l'export: ${exportException.errorCode} - ${exportException.message}")
+156                 }
+157 
+158                 override fun onFallbackApplied(
+159                     composition: Composition,
+160                     originalTransformationRequest: TransformationRequest,
+161                     fallbackTransformationRequest: TransformationRequest
+162                 ) {
+163                     sendProgress(0.0, "preparing", "Negociation des codecs (fallback applique)")
+164                 }
+165             })
+166 
+167         if (bitrate > 0) {
+168             builder.setEncoderFactory(
+169                 DefaultEncoderFactory.Builder(context)
+170                     .setRequestedVideoEncoderSettings(
+171                         VideoEncoderSettings.Builder().setBitrate(bitrate).build()
+172                     )
+173                     .build()
+174             )
+175         }
+176 
+177         transformer = builder.build()
+178         transformer?.start(composition, outputPath)
+179 
+180         // Polling des progrès (Media3 1.4.1 n'a pas de callback de progression direct)
+181         startProgressPolling()
+182     }
+183 
+184     fun cancelExport() {
+185         progressPolling = false
+186         progressHandler?.removeCallbacksAndMessages(null)
+187         transformer?.cancel()
+188         transformer = null
+189     }
+190 
+191     private fun startProgressPolling() {
+192         progressPolling = true
+193         val holder = ProgressHolder()
+194         val poll = object : Runnable {
+195             override fun run() {
+196                 if (!progressPolling) return
+197                 val t = transformer ?: return
+198                 val state = t.getProgress(holder)
+199                 val progressPercent = holder.progress.coerceIn(0, 100)
+200                 val progress = progressPercent / 100.0
+250                         .setEndPositionMs(item.startMs + item.durationMs)
+251                         .build()
+252                 )
+253             }
+254         }.build()
+255         val b = EditedMediaItem.Builder(mediaItem).setRemoveAudio(removeAudio)
+256         val audioProcs = mutableListOf<AudioProcessor>()
+257         val videoEffects = mutableListOf<Effect>()
+258         if (item.speed != 1.0) {
+259             audioProcs.add(SonicAudioProcessor().apply { setSpeed(item.speed.toFloat()) })
+260             videoEffects.add(SpeedChangeEffect(item.speed.toFloat()))
+261         }
+262         if (item.volume != 1.0) {
+263             val mixer = ChannelMixingAudioProcessor()
+264             for (ch in 1..2) {
+265                 mixer.putChannelMixingMatrix(ChannelMixingMatrix.create(ch, ch).scaleBy(item.volume.toFloat()))
+266             }
+267             audioProcs.add(mixer)
+268         }
+269         // Filtres : meme ordre que l'apercu (saturation, sepia, contraste, luminosite).
+270         if (item.saturation != 0.0) {
+271             videoEffects.add(HslAdjustment.Builder().adjustSaturation((item.saturation * 100).toFloat()).build())
+272         }
+273         if (item.sepia > 0.0) videoEffects.add(SepiaMatrix(item.sepia.toFloat()))
+274         if (item.contrast != 0.0) videoEffects.add(Contrast(item.contrast.toFloat()))
+275         if (item.brightness != 0.0) videoEffects.add(Brightness(item.brightness.toFloat()))
+276         if (height > 0) videoEffects.add(Presentation.createForHeight(height))
+277         if (audioProcs.isNotEmpty() || videoEffects.isNotEmpty()) {
+278             b.setEffects(Effects(audioProcs, videoEffects))
+279         }
+280         return b.build()
+281     }
+282 
+283     private fun sendProgress(progress: Double, state: String, message: String) {
+284         val map = JSONObject()
+285             .put("progress", progress)
+286             .put("state", state)
+287             .put("message", message)
+288         mainHandler.post {
+289             channel.invokeMethod("progress", map.toString(), null)
+290         }

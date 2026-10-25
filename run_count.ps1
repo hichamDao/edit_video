@@ -1,0 +1,2 @@
+$proc = Start-Process -FilePath "python" -ArgumentList "E:\edit_video\count2.py" -NoNewWindow -PassThru -Wait -RedirectStandardOutput "E:\edit_video\count2_out.txt"
+Get-Content "E:\edit_video\count2_out.txt"

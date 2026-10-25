@@ -1,6 +1,6 @@
-/// Couche d'édition — Fidèle à l'analyse REA de CapCut 19.8.0
-/// Packages : com.vega.operation (SegmentService), com.vega.draft.impl (ProjectServiceImpl),
-///            com.vega.drafeupgrade (DraftTransformerKt)
+// Couche d'édition — Fidèle à l'analyse REA de CapCut 19.8.0
+// Packages : com.vega.operation (SegmentService), com.vega.draft.impl (ProjectServiceImpl),
+//            com.vega.drafeupgrade (DraftTransformerKt)
 
 import 'package:uuid/uuid.dart';
 import '../models/capcut_models.dart';
@@ -16,7 +16,9 @@ class SegmentService {
 
   /// Opération par lot sur une liste de segments (équivalent de `s(List<Segment>)`).
   void apply(List<Segment> segments, void Function(Segment) mutate) {
-    for (final s in segments) mutate(s);
+    for (final s in segments) {
+      mutate(s);
+    }
   }
 
   /// Découpe un segment à un temps donné → retourne deux segments.

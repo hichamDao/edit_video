@@ -1,8 +1,8 @@
-/// Chaîne d'export — Pont natif Media3 Transformer (Android) via MethodChannel.
-/// L'export réel est exécuté côté Kotlin (Media3 1.4.1) ; ce service Dart envoie la
-/// composition sérialisée et reçoit les événements de progression / fin / erreur.
-/// Compatible hors Android (Web/Desktop) : le service tombe en mode "non disponible"
-/// et l'UI affiche un message explicite.
+// Chaîne d'export — Pont natif Media3 Transformer (Android) via MethodChannel.
+// L'export réel est exécuté côté Kotlin (Media3 1.4.1) ; ce service Dart envoie la
+// composition sérialisée et reçoit les événements de progression / fin / erreur.
+// Compatible hors Android (Web/Desktop) : le service tombe en mode "non disponible"
+// et l'UI affiche un message explicite.
 
 import 'dart:async';
 import 'dart:convert';
@@ -10,7 +10,6 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import '../models/capcut_models.dart';
-import 'segment_service.dart';
 
 /// Résultat d'une tentative d'export.
 enum ExportStatus { idle, preparing, processing, completed, failed, unsupported }
@@ -211,7 +210,9 @@ class ExportService {
 
   /// Annule l'export en cours.
   void cancel() {
-    _sub.forEach((s) => s.cancel());
+    for (final s in _sub) {
+      s.cancel();
+    }
     _sub.clear();
     _channel.invokeMethod('cancelExport').catchError((_) {});
     _emit(ExportProgress(
@@ -227,7 +228,9 @@ class ExportService {
 
   void dispose() {
     _closed = true;
-    _sub.forEach((s) => s.cancel());
+    for (final s in _sub) {
+      s.cancel();
+    }
     _sub.clear();
     if (!_controller.isClosed) {
       _controller.close();

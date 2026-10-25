@@ -5,11 +5,6 @@ import android.content.ContentValues
 import android.os.Build
 import android.provider.MediaStore
 import android.net.Uri
-import androidx.media3.common.Effects
-import androidx.media3.effect.Presentation
-import androidx.media3.transformer.DefaultEncoderFactory
-import androidx.media3.transformer.VideoEncoderSettings
-import java.io.File
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
@@ -63,40 +58,27 @@ class Media3ExportService(
         outputPath: String,
         videoMimeType: String? = null,
         audioMimeType: String? = null,
-        outputHeight: Int = 0,
-        bitrate: Int = 0,
-        includeAudio: Boolean = true
+        outputHeight: Int = 0
     ) {
-        cancelExport()
         this.outputPath = outputPath
-        val parsed = try {
+        val items = try {
             parseComposition(compositionJson)
         } catch (e: Exception) {
             sendError("ERR_PARSE", "Composition JSON invalide: ${e.message}")
             return
         }
 
-        val videoItems = parsed.first
-        val audioItems = parsed.second
-        if (videoItems.isEmpty() && audioItems.isEmpty()) {
+        if (items.isEmpty()) {
             sendError("ERR_EMPTY", "Aucun clip dans la composition")
             return
         }
 
-        val sequences = mutableListOf<EditedMediaItemSequence>()
-        if (videoItems.isNotEmpty()) {
-            sequences.add(EditedMediaItemSequence(
-                videoItems.map { buildItem(it, !includeAudio, outputHeight) }))
+        val editedItems = items.map { item ->
+            EditedMediaItem.Builder(MediaItem.fromUri(Uri.parse(item.path))).build()
         }
-        if (audioItems.isNotEmpty() && includeAudio) {
-            sequences.add(EditedMediaItemSequence(
-                audioItems.map { buildItem(it, false, 0) }))
-        }
-        if (sequences.isEmpty()) {
-            sendError("ERR_EMPTY", "Aucune piste a exporter (audio desactive)")
-            return
-        }
-        val composition = Composition.Builder(sequences).build()
+
+        val sequence = EditedMediaItemSequence(editedItems)
+        val composition = Composition.Builder(listOf(sequence)).build()
 
         val requestBuilder = TransformationRequest.Builder()
         videoMimeType?.let { requestBuilder.setVideoMimeType(it) }
@@ -107,17 +89,12 @@ class Media3ExportService(
             .setTransformationRequest(request)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                    progressPolling = false
-                    // Copie vers la galerie hors du thread principal (fichiers volumineux).
-                    Thread {
-                        try {
-                            val publicUri = publishToGallery(outputPath)
-                            File(outputPath).delete()
-                            sendDone(publicUri)
-                        } catch (e: Exception) {
-                            sendError("ERR_GALLERY", "Export encode mais sauvegarde galerie echouee: ${e.message}")
-                        }
-                    }.start()
+                    try {
+                        val publicUri = publishToGallery(outputPath)
+                        sendDone(publicUri)
+                    } catch (e: Exception) {
+                        sendError("ERR_GALLERY", "Export encode mais sauvegarde galerie echouee: ${e.message}")
+                    }
                 }
 
                 override fun onError(
@@ -125,7 +102,7 @@ class Media3ExportService(
                     exportResult: ExportResult,
                     exportException: ExportException
                 ) {
-                    sendError("ERR_EXPORT", "Echec de l'export: ${exportException.errorCode} - ${exportException.message}")
+                    sendError("ERR_EXPORT", "Échec de l'export: ${exportException.errorCode} - ${exportException.message}")
                 }
 
                 override fun onFallbackApplied(
@@ -133,22 +110,12 @@ class Media3ExportService(
                     originalTransformationRequest: TransformationRequest,
                     fallbackTransformationRequest: TransformationRequest
                 ) {
-                    sendProgress(0.0, "preparing", "Negociation des codecs (fallback applique)")
+                    sendProgress(0.0, "preparing", "Négociation des codecs (fallback appliqué)")
                 }
             })
 
-        if (bitrate > 0) {
-            builder.setEncoderFactory(
-                DefaultEncoderFactory.Builder(context)
-                    .setRequestedVideoEncoderSettings(
-                        VideoEncoderSettings.Builder().setBitrate(bitrate).build()
-                    )
-                    .build()
-            )
-        }
-
         transformer = builder.build()
-        transformer?.start(composition, outputPath)
+        transformer?.start(composition as Composition, outputPath)
 
         // Polling des progrès (Media3 1.4.1 n'a pas de callback de progression direct)
         startProgressPolling()
@@ -181,39 +148,20 @@ class Media3ExportService(
         progressHandler?.postDelayed(poll, 200)
     }
 
-    private fun parseComposition(json: String): Pair<List<ClipItem>, List<ClipItem>> {
-        val root = JSONObject(json)
-        return Pair(parseArray(root.optJSONArray("video")), parseArray(root.optJSONArray("audio")))
-    }
-
-    private fun parseArray(arr: JSONArray?): List<ClipItem> {
+    private fun parseComposition(json: String): List<ClipItem> {
+        val arr = JSONArray(json)
         val list = mutableListOf<ClipItem>()
-        if (arr == null) return list
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            list.add(ClipItem(o.getString("path"), o.optLong("startMs", 0L), o.optLong("durationMs", 0L)))
+            list.add(
+                ClipItem(
+                    path = o.getString("path"),
+                    startMs = o.optLong("startMs", 0L),
+                    durationMs = o.optLong("durationMs", 0L)
+                )
+            )
         }
         return list
-    }
-
-    /** Applique le rognage (start/duration), la resolution et l'option audio. */
-    private fun buildItem(item: ClipItem, removeAudio: Boolean, height: Int): EditedMediaItem {
-        val uri = if (item.path.contains("://")) Uri.parse(item.path) else Uri.fromFile(File(item.path))
-        val mediaItem = MediaItem.Builder().setUri(uri).apply {
-            if (item.durationMs > 0) {
-                setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(item.startMs)
-                        .setEndPositionMs(item.startMs + item.durationMs)
-                        .build()
-                )
-            }
-        }.build()
-        val b = EditedMediaItem.Builder(mediaItem).setRemoveAudio(removeAudio)
-        if (height > 0) {
-            b.setEffects(Effects(listOf(), listOf(Presentation.createForHeight(height))))
-        }
-        return b.build()
     }
 
     private fun sendProgress(progress: Double, state: String, message: String) {
@@ -232,7 +180,7 @@ class Media3ExportService(
             put(MediaStore.Video.Media.DISPLAY_NAME, name)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/EditVideo")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/REA")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
         }

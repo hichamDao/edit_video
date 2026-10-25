@@ -1,0 +1,8 @@
+﻿py : C:\Users\lenovo\AppData\Local\Programs\Python\Python311\python.exe: can't open file 'E:\\edit_video\\m3_dump.py': 
+[Errno 2] No such file or directory
+Au caractère Ligne:4 : 1
++ py E:\edit_video\m3_dump.py 2>&1 | Out-File E:\edit_video\m3_dump.txt ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\lenovo...le or directory:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

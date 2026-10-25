@@ -1,6 +1,6 @@
-// Service pour lire les métadonnées d'un fichier vidéo via le pont natif Android.
-// Utilise `MediaMetadataRetriever` (API 21+, donc compatible minSdk 21+).
-// Aucune dépendance tierce : communication via MethodChannel standard Flutter.
+/// Service pour lire les métadonnées d'un fichier vidéo via le pont natif Android.
+/// Utilise `MediaMetadataRetriever` (API 21+, donc compatible minSdk 21+).
+/// Aucune dépendance tierce : communication via MethodChannel standard Flutter.
 
 import 'dart:async';
 import 'dart:convert';

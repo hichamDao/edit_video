@@ -1,5 +1,5 @@
-// Modèle de données — Fidèle à l'analyse REA de CapCut 19.8.0
-// Packages : com.vega.draft.data.template (Project, Track, Segment, Clip, Material, ...)
+/// Modèle de données — Fidèle à l'analyse REA de CapCut 19.8.0
+/// Packages : com.vega.draft.data.template (Project, Track, Segment, Clip, Material, ...)
 
 /// Racine du document de montage — `com.vega.draft.data.template.Project`
 /// Référencée par 86 xrefs (point de fuite maximal du moteur).
@@ -50,9 +50,7 @@ class Project {
 
   List<Segment> getAllSegments() {
     final segs = <Segment>[];
-    for (final t in tracks) {
-      segs.addAll(t.segments);
-    }
+    for (final t in tracks) segs.addAll(t.segments);
     return segs;
   }
 

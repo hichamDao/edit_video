@@ -1,0 +1,207 @@
+﻿81:         if (videoItems.isEmpty() && audioItems.isEmpty()) {
+82:             sendError("ERR_EMPTY", "Aucun clip dans la composition")
+83:             return
+84:         }
+85: 
+86:         val sequences = mutableListOf<EditedMediaItemSequence>()
+87:         if (videoItems.isNotEmpty()) {
+88:             sequences.add(EditedMediaItemSequence(
+89:                 videoItems.map { buildItem(it, !includeAudio, outputHeight) }))
+90:         }
+91:         if (audioItems.isNotEmpty() && includeAudio) {
+92:             sequences.add(EditedMediaItemSequence(
+93:                 audioItems.map { buildItem(it, false, 0) }))
+94:         }
+95:         if (sequences.isEmpty()) {
+96:             sendError("ERR_EMPTY", "Aucune piste a exporter (audio desactive)")
+97:             return
+98:         }
+99:         val composition = Composition.Builder(sequences).build()
+100: 
+101:         val requestBuilder = TransformationRequest.Builder()
+102:         videoMimeType?.let { requestBuilder.setVideoMimeType(it) }
+103:         audioMimeType?.let { requestBuilder.setAudioMimeType(it) }
+104:         val request = requestBuilder.build()
+105: 
+106:         val builder = Transformer.Builder(context)
+107:             .setTransformationRequest(request)
+108:             .addListener(object : Transformer.Listener {
+109:                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+110:                     progressPolling = false
+111:                     // Copie vers la galerie hors du thread principal (fichiers volumineux).
+112:                     Thread {
+113:                         try {
+114:                             val publicUri = publishToGallery(outputPath)
+115:                             File(outputPath).delete()
+116:                             sendDone(publicUri)
+117:                         } catch (e: Exception) {
+118:                             sendError("ERR_GALLERY", "Export encode mais sauvegarde galerie echouee: ${e.message}")
+119:                         }
+120:                     }.start()
+121:                 }
+122: 
+123:                 override fun onError(
+124:                     composition: Composition,
+125:                     exportResult: ExportResult,
+126:                     exportException: ExportException
+127:                 ) {
+128:                     sendError("ERR_EXPORT", "Echec de l'export: ${exportException.errorCode} - ${exportException.message}")
+129:                 }
+130: 
+131:                 override fun onFallbackApplied(
+132:                     composition: Composition,
+133:                     originalTransformationRequest: TransformationRequest,
+134:                     fallbackTransformationRequest: TransformationRequest
+135:                 ) {
+136:                     sendProgress(0.0, "preparing", "Negociation des codecs (fallback applique)")
+137:                 }
+138:             })
+139: 
+140:         if (bitrate > 0) {
+141:             builder.setEncoderFactory(
+142:                 DefaultEncoderFactory.Builder(context)
+143:                     .setRequestedVideoEncoderSettings(
+144:                         VideoEncoderSettings.Builder().setBitrate(bitrate).build()
+145:                     )
+146:                     .build()
+147:             )
+148:         }
+149: 
+150:         transformer = builder.build()
+151:         transformer?.start(composition, outputPath)
+152: 
+153:         // Polling des progrès (Media3 1.4.1 n'a pas de callback de progression direct)
+154:         startProgressPolling()
+155:     }
+156: 
+157:     fun cancelExport() {
+158:         progressPolling = false
+159:         progressHandler?.removeCallbacksAndMessages(null)
+160:         transformer?.cancel()
+161:         transformer = null
+162:     }
+163: 
+164:     private fun startProgressPolling() {
+165:         progressPolling = true
+166:         val holder = ProgressHolder()
+167:         val poll = object : Runnable {
+168:             override fun run() {
+169:                 if (!progressPolling) return
+170:                 val t = transformer ?: return
+171:                 val state = t.getProgress(holder)
+172:                 val progressPercent = holder.progress.coerceIn(0, 100)
+173:                 val progress = progressPercent / 100.0
+174:                 sendProgress(progress, "processing", "Export en cours $progressPercent%")
+175:                 if (progressPolling) {
+176:                     progressHandler?.postDelayed(this, 200)
+177:                 }
+178:             }
+179:         }
+180:         progressHandler = Handler(Looper.getMainLooper())
+181:         progressHandler?.postDelayed(poll, 200)
+182:     }
+183: 
+184:     private fun parseComposition(json: String): Pair<List<ClipItem>, List<ClipItem>> {
+185:         val root = JSONObject(json)
+186:         return Pair(parseArray(root.optJSONArray("video")), parseArray(root.optJSONArray("audio")))
+187:     }
+188: 
+189:     private fun parseArray(arr: JSONArray?): List<ClipItem> {
+190:         val list = mutableListOf<ClipItem>()
+191:         if (arr == null) return list
+192:         for (i in 0 until arr.length()) {
+193:             val o = arr.getJSONObject(i)
+194:             list.add(ClipItem(o.getString("path"), o.optLong("startMs", 0L), o.optLong("durationMs", 0L)))
+195:         }
+196:         return list
+197:     }
+198: 
+199:     /** Applique le rognage (start/duration), la resolution et l'option audio. */
+200:     private fun buildItem(item: ClipItem, removeAudio: Boolean, height: Int): EditedMediaItem {
+201:         val uri = if (item.path.contains("://")) Uri.parse(item.path) else Uri.fromFile(File(item.path))
+202:         val mediaItem = MediaItem.Builder().setUri(uri).apply {
+203:             if (item.durationMs > 0) {
+204:                 setClippingConfiguration(
+205:                     MediaItem.ClippingConfiguration.Builder()
+206:                         .setStartPositionMs(item.startMs)
+207:                         .setEndPositionMs(item.startMs + item.durationMs)
+208:                         .build()
+209:                 )
+210:             }
+211:         }.build()
+212:         val b = EditedMediaItem.Builder(mediaItem).setRemoveAudio(removeAudio)
+213:         if (height > 0) {
+214:             b.setEffects(Effects(listOf(), listOf(Presentation.createForHeight(height))))
+215:         }
+216:         return b.build()
+217:     }
+218: 
+219:     private fun sendProgress(progress: Double, state: String, message: String) {
+220:         val map = JSONObject()
+221:             .put("progress", progress)
+222:             .put("state", state)
+223:             .put("message", message)
+224:         mainHandler.post {
+225:             channel.invokeMethod("progress", map.toString(), null)
+226:         }
+227:     }
+228: 
+229:     private fun publishToGallery(tempPath: String): String {
+230:         val name = "export_${System.currentTimeMillis()}.mp4"
+231:         val values = ContentValues().apply {
+232:             put(MediaStore.Video.Media.DISPLAY_NAME, name)
+233:             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+234:             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+235:                 put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/EditVideo")
+236:                 put(MediaStore.Video.Media.IS_PENDING, 1)
+237:             }
+238:         }
+239:         val resolver = context.contentResolver
+240:         val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+241:             ?: throw IllegalStateException("Impossible de creer l'entree MediaStore")
+242:         try {
+243:             resolver.openOutputStream(uri)?.use { out ->
+244:                 java.io.FileInputStream(tempPath).use { input ->
+245:                     input.copyTo(out)
+246:                 }
+247:             } ?: throw IllegalStateException("OutputStream null")
+248:             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+249:                 val doneValues = ContentValues().apply {
+250:                     put(MediaStore.Video.Media.IS_PENDING, 0)
+251:                 }
+252:                 resolver.update(uri, doneValues, null, null)
+253:             }
+254:             return uri.toString()
+255:         } catch (e: Exception) {
+256:             resolver.delete(uri, null, null)
+257:             throw e
+258:         }
+259:     }
+260: 
+261:     private fun sendDone(outputPath: String) {
+262:         progressPolling = false
+263:         progressHandler?.removeCallbacksAndMessages(null)
+264:         val map = JSONObject()
+265:             .put("outputPath", outputPath)
+266:         mainHandler.post {
+267:             channel.invokeMethod("done", map.toString(), null)
+268:         }
+269:     }
+270: 
+271:     private fun sendError(code: String, message: String) {
+272:         progressPolling = false
+273:         progressHandler?.removeCallbacksAndMessages(null)
+274:         val map = JSONObject()
+275:             .put("code", code)
+276:             .put("message", message)
+277:         mainHandler.post {
+278:             channel.invokeMethod("error", map.toString(), null)
+279:         }
+280:     }
+281: 
+282:     private data class ClipItem(
+283:         val path: String,
+284:         val startMs: Long,
+285:         val durationMs: Long
+286:     )
+287: }

@@ -268,15 +268,23 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // Commence à la position de rognage du clip sélectionné.
       await controller.seekTo(clip!.trimStart);
+      await controller.setPlaybackSpeed(clip.speed);
+      await controller.setVolume(clip.volume.clamp(0.0, 1.0).toDouble());
 
       // Le fichier source est lu en entier : on arrête la lecture à la fin du
       // clip (rognage inclus) et on synchronise la tête de lecture.
-      final sourceEnd = clip.trimStart + segment.timeRange.duration;
+      final sourceEnd = clip.trimStart +
+          Duration(
+              microseconds:
+                  (segment.timeRange.duration.inMicroseconds * clip.speed).round());
       controller.addListener(() {
         if (!mounted || !identical(_videoController, controller)) return;
         final value = controller.value;
         if (!value.isPlaying) return;
-        var local = value.position - clip.trimStart;
+        var local = Duration(
+            microseconds:
+                ((value.position - clip.trimStart).inMicroseconds / clip.speed)
+                    .round());
         if (value.position >= sourceEnd) {
           controller.pause();
           controller.seekTo(sourceEnd);
@@ -808,6 +816,198 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  // ───────────────────────── Texte ─────────────────────────
+
+  Track _textTrack() {
+    final project = _project!;
+    for (final t in project.tracks) {
+      if (t.type == TrackType.text) return t;
+    }
+    final track = Track(id: _uuid.v4(), name: 'Texte 1', type: TrackType.text);
+    project.addTrack(track);
+    return track;
+  }
+
+  bool _isText(Segment? s) => s?.clip?.type == ClipType.text;
+
+  void _addText() {
+    if (_project == null) return;
+    final track = _textTrack();
+    final start = _playheadPosition;
+    const dur = Duration(seconds: 3);
+    final clip = Clip(
+      id: _uuid.v4(),
+      name: 'Texte',
+      assetPath: '',
+      type: ClipType.text,
+      duration: dur,
+      properties: {'text': 'Votre texte', 'color': 0xFFFFFFFF, 'size': 56, 'y': 0.5},
+    );
+    final segment = Segment(
+      id: _uuid.v4(),
+      name: 'Texte',
+      timeRange: TimeRange(start: start, duration: dur),
+      clipId: clip.id,
+      clip: clip,
+    );
+    _projectService.addSegment(_project!, track.id, segment);
+    ProjectHolder.current = _project;
+    setState(() => _selectedSegment = segment);
+    _editText();
+  }
+
+  Future<void> _editText() async {
+    final seg = _selectedSegment;
+    final clip = seg?.clip;
+    if (seg == null || clip == null || clip.type != ClipType.text) return;
+    final props = clip.properties;
+    final controller = TextEditingController(text: '${props['text'] ?? ''}');
+    var size = ((props['size'] ?? 56) as num).toDouble();
+    var y = ((props['y'] ?? 0.5) as num).toDouble();
+    var color = (props['color'] ?? 0xFFFFFFFF) as int;
+    var seconds = seg.timeRange.duration.inMilliseconds / 1000;
+    const colors = [0xFFFFFFFF, 0xFFFFEB3B, 0xFFFF5252, 0xFF40C4FF, 0xFF69F0AE, 0xFF000000];
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setL) => AlertDialog(
+          title: const Text('Texte'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: controller, autofocus: true, maxLines: 2),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, children: [
+                for (final c in colors)
+                  GestureDetector(
+                    onTap: () => setL(() => color = c),
+                    child: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Color(c),
+                      child: color == c ? const Icon(Icons.check, size: 16, color: Colors.grey) : null,
+                    ),
+                  ),
+              ]),
+              Text('Taille : ${size.round()}'),
+              Slider(min: 20, max: 140, value: size, onChanged: (v) => setL(() => size = v)),
+              Text('Position verticale : ${(y * 100).round()} %'),
+              Slider(min: 0.05, max: 0.95, value: y, onChanged: (v) => setL(() => y = v)),
+              Text('Durée : ${seconds.toStringAsFixed(1)} s'),
+              Slider(min: 0.5, max: 15, value: seconds.clamp(0.5, 15.0).toDouble(), onChanged: (v) => setL(() => seconds = v)),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          ],
+        ),
+      ),
+    );
+    final text = controller.text;
+    controller.dispose();
+    if (ok != true || !mounted) return;
+    final dur = Duration(milliseconds: (seconds * 1000).round());
+    props['text'] = text.isEmpty ? ' ' : text;
+    props['size'] = size.round();
+    props['y'] = y;
+    props['color'] = color;
+    seg.timeRange = TimeRange(start: seg.timeRange.start, duration: dur);
+    setState(() {});
+    ProjectHolder.current = _project;
+  }
+
+  /// Superpose les textes actifs à la position de la tête de lecture.
+  Widget _previewWithText(Widget base) {
+    final project = _project;
+    final overlays = <Widget>[];
+    if (project != null) {
+      for (final track in project.tracks) {
+        if (track.type != TrackType.text) continue;
+        for (final seg in track.segments) {
+          final start = seg.timeRange.start;
+          final end = start + seg.timeRange.duration;
+          if (_playheadPosition < start || _playheadPosition >= end) continue;
+          final p = seg.clip?.properties ?? const {};
+          final y = ((p['y'] ?? 0.5) as num).toDouble();
+          final size = ((p['size'] ?? 56) as num).toDouble();
+          overlays.add(Align(
+            alignment: Alignment(0, y * 2 - 1),
+            child: LayoutBuilder(builder: (context, c) {
+              final scale = (MediaQuery.of(context).size.height * 0.3) / 720;
+              return Text(
+                '${p['text'] ?? ''}',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: size * scale * 2,
+                  fontWeight: FontWeight.bold,
+                  color: Color((p['color'] ?? 0xFFFFFFFF) as int),
+                  shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
+                ),
+              );
+            }),
+          ));
+        }
+      }
+    }
+    return Stack(fit: StackFit.expand, children: [base, ...overlays]);
+  }
+
+  // ─────────────────── Vitesse et volume ───────────────────
+
+  Future<void> _editSpeedVolume() async {
+    final seg = _selectedSegment;
+    final clip = seg?.clip;
+    if (seg == null || clip == null || clip.type == ClipType.text) return;
+    var speed = clip.speed;
+    var volume = clip.volume;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setL) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Vitesse : ${speed.toStringAsFixed(2)}x'),
+            Slider(
+              min: 0.25, max: 4, divisions: 15, value: speed.clamp(0.25, 4.0).toDouble(),
+              onChanged: (v) => setL(() => speed = v),
+            ),
+            Text('Volume : ${(volume * 100).round()} %'),
+            Slider(
+              min: 0, max: 2, divisions: 20, value: volume.clamp(0.0, 2.0).toDouble(),
+              onChanged: (v) => setL(() => volume = v),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Appliquer')),
+          ]),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    clip.speed = speed;
+    clip.volume = volume;
+    _recomputeTimeline(refresh: false);
+    final c = _videoController;
+    if (c != null && c.value.isInitialized) {
+      await c.setPlaybackSpeed(speed);
+      await c.setVolume(volume.clamp(0.0, 1.0).toDouble());
+    }
+    setState(() => _playheadPosition = seg.timeRange.start);
+    ProjectHolder.current = _project;
+  }
+
+  void _deleteSelected() {
+    final seg = _selectedSegment;
+    final project = _project;
+    if (seg == null || project == null) return;
+    for (final t in project.tracks) {
+      if (t.segments.any((x) => x.id == seg.id)) {
+        _projectService.removeSegment(project, t.id, seg.id);
+        break;
+      }
+    }
+    _selectedSegment = null;
+    _recomputeTimeline();
+  }
+
   // Barre d'actions : défilement horizontal pour éviter le débordement.
   Widget _buildActions() {
     final selected = _selectedSegment;
@@ -843,6 +1043,36 @@ class _EditorScreenState extends State<EditorScreen> {
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Clip vide'),
           ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            onPressed: _addText,
+            icon: const Icon(Icons.title, size: 18),
+            label: const Text('Texte'),
+          ),
+          if (_isText(selected)) ...[
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _editText,
+              icon: const Icon(Icons.edit, size: 18),
+              label: const Text('Modifier'),
+            ),
+          ],
+          if (selected != null && !_isText(selected) && selected.clip != null) ...[
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _editSpeedVolume,
+              icon: const Icon(Icons.speed, size: 18),
+              label: const Text('Vitesse/Volume'),
+            ),
+          ],
+          if (selected != null) ...[
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: 'Supprimer',
+              onPressed: _deleteSelected,
+              icon: const Icon(Icons.delete),
+            ),
+          ],
           if (selected != null && track != null) ...[
             const SizedBox(width: 8),
             IconButton.filledTonal(
@@ -898,7 +1128,7 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           Expanded(
             flex: 3,
-            child: Container(
+            child: _previewWithText(Container(
               width: double.infinity,
               color: Colors.black,
               child: controller != null && controller.value.isInitialized
@@ -928,7 +1158,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   ],
                 ),
               ),
-            ),
+            )),
           ),
           const Divider(height: 1, color: Colors.grey),
           Expanded(

@@ -344,6 +344,8 @@ class Clip {
   final Flip flip;               // internes Flip
   final Map<String, dynamic> metadata;  // VideoMetadata embarqué
   final Map<String, dynamic> properties;
+  double speed;            // vitesse de lecture (0.25 - 4.0)
+  double volume;           // volume (0.0 - 2.0)
 
   Clip({
     required this.id,
@@ -359,14 +361,20 @@ class Clip {
     Flip? flip,
     Map<String, dynamic>? metadata,
     Map<String, dynamic>? properties,
+    this.speed = 1.0,
+    this.volume = 1.0,
   })  : scale = scale ?? Scale.one(),
         transform = transform ?? Transform.identity(),
         flip = flip ?? Flip.none(),
         metadata = metadata ?? {},
         properties = properties ?? {};
 
-  Duration get effectiveDuration =>
-      duration - trimStart - trimEnd;
+  /// Durée source après rognage (avant application de la vitesse).
+  Duration get sourceDuration => duration - trimStart - trimEnd;
+
+  /// Durée sur la timeline (tient compte de la vitesse).
+  Duration get effectiveDuration => Duration(
+      microseconds: (sourceDuration.inMicroseconds / (speed <= 0 ? 1.0 : speed)).round());
 
   Map<String, dynamic> toJson() {
     return {
@@ -383,6 +391,8 @@ class Clip {
       'flip': flip.toJson(),
       'metadata': metadata,
       'properties': properties,
+      'speed': speed,
+      'volume': volume,
     };
   }
 }

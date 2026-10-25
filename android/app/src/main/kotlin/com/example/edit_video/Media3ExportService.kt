@@ -5,7 +5,22 @@ import android.content.ContentValues
 import android.os.Build
 import android.provider.MediaStore
 import android.net.Uri
+import androidx.media3.common.Effect
 import androidx.media3.common.Effects
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
+import androidx.media3.common.audio.SonicAudioProcessor
+import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.OverlaySettings
+import androidx.media3.effect.SpeedChangeEffect
+import androidx.media3.effect.TextOverlay
+import android.graphics.Color
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.AbsoluteSizeSpan
+import android.text.style.ForegroundColorSpan
+import com.google.common.collect.ImmutableList
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.VideoEncoderSettings
@@ -78,7 +93,8 @@ class Media3ExportService(
 
         val videoItems = parsed.first
         val audioItems = parsed.second
-        if (videoItems.isEmpty() && audioItems.isEmpty()) {
+        val textItems = parsed.third
+        if (videoItems.isEmpty() && audioItems.isEmpty()) { // les textes seuls n'ont rien a exporter
             sendError("ERR_EMPTY", "Aucun clip dans la composition")
             return
         }
@@ -96,7 +112,14 @@ class Media3ExportService(
             sendError("ERR_EMPTY", "Aucune piste a exporter (audio desactive)")
             return
         }
-        val composition = Composition.Builder(sequences).build()
+        val compositionBuilder = Composition.Builder(sequences)
+        if (textItems.isNotEmpty()) {
+            val overlays = textItems.map { TimedTextOverlay(it, outputHeight) }
+            compositionBuilder.setEffects(
+                Effects(listOf(), listOf<Effect>(OverlayEffect(ImmutableList.copyOf(overlays))))
+            )
+        }
+        val composition = compositionBuilder.build()
 
         val requestBuilder = TransformationRequest.Builder()
         videoMimeType?.let { requestBuilder.setVideoMimeType(it) }
@@ -181,9 +204,20 @@ class Media3ExportService(
         progressHandler?.postDelayed(poll, 200)
     }
 
-    private fun parseComposition(json: String): Pair<List<ClipItem>, List<ClipItem>> {
+    private fun parseComposition(json: String): Triple<List<ClipItem>, List<ClipItem>, List<TextItem>> {
         val root = JSONObject(json)
-        return Pair(parseArray(root.optJSONArray("video")), parseArray(root.optJSONArray("audio")))
+        val texts = mutableListOf<TextItem>()
+        val ta = root.optJSONArray("texts")
+        if (ta != null) {
+            for (i in 0 until ta.length()) {
+                val o = ta.getJSONObject(i)
+                texts.add(TextItem(
+                    o.optString("text", ""), o.optLong("startMs", 0L), o.optLong("durationMs", 0L),
+                    o.optLong("color", 0xFFFFFFFFL).toInt(), o.optDouble("size", 56.0), o.optDouble("y", 0.5)
+                ))
+            }
+        }
+        return Triple(parseArray(root.optJSONArray("video")), parseArray(root.optJSONArray("audio")), texts)
     }
 
     private fun parseArray(arr: JSONArray?): List<ClipItem> {
@@ -191,7 +225,10 @@ class Media3ExportService(
         if (arr == null) return list
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            list.add(ClipItem(o.getString("path"), o.optLong("startMs", 0L), o.optLong("durationMs", 0L)))
+            list.add(ClipItem(
+                o.getString("path"), o.optLong("startMs", 0L), o.optLong("durationMs", 0L),
+                o.optDouble("speed", 1.0), o.optDouble("volume", 1.0)
+            ))
         }
         return list
     }
@@ -210,8 +247,22 @@ class Media3ExportService(
             }
         }.build()
         val b = EditedMediaItem.Builder(mediaItem).setRemoveAudio(removeAudio)
-        if (height > 0) {
-            b.setEffects(Effects(listOf(), listOf(Presentation.createForHeight(height))))
+        val audioProcs = mutableListOf<AudioProcessor>()
+        val videoEffects = mutableListOf<Effect>()
+        if (item.speed != 1.0) {
+            audioProcs.add(SonicAudioProcessor().apply { setSpeed(item.speed.toFloat()) })
+            videoEffects.add(SpeedChangeEffect(item.speed.toFloat()))
+        }
+        if (item.volume != 1.0) {
+            val mixer = ChannelMixingAudioProcessor()
+            for (ch in 1..2) {
+                mixer.putChannelMixingMatrix(ChannelMixingMatrix.create(ch, ch).scaleBy(item.volume.toFloat()))
+            }
+            audioProcs.add(mixer)
+        }
+        if (height > 0) videoEffects.add(Presentation.createForHeight(height))
+        if (audioProcs.isNotEmpty() || videoEffects.isNotEmpty()) {
+            b.setEffects(Effects(audioProcs, videoEffects))
         }
         return b.build()
     }
@@ -279,9 +330,34 @@ class Media3ExportService(
         }
     }
 
+    private data class TextItem(
+        val text: String, val startMs: Long, val durationMs: Long,
+        val color: Int, val size: Double, val y: Double
+    )
+
+    /** Texte affiche uniquement pendant [startMs, startMs+durationMs). */
+    private class TimedTextOverlay(private val t: TextItem, frameHeight: Int) : TextOverlay() {
+        private val shown = SpannableString(t.text).apply {
+            val px = (t.size * (if (frameHeight > 0) frameHeight else 720) / 720.0).toInt().coerceAtLeast(12)
+            setSpan(ForegroundColorSpan(t.color), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(AbsoluteSizeSpan(px), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        private val hidden = SpannableString(" ")
+
+        override fun getText(presentationTimeUs: Long): SpannableString {
+            val ms = presentationTimeUs / 1000
+            return if (ms >= t.startMs && ms < t.startMs + t.durationMs) shown else hidden
+        }
+
+        override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
+            OverlaySettings.Builder().setBackgroundFrameAnchor(0f, (1.0 - 2.0 * t.y).toFloat()).build()
+    }
+
     private data class ClipItem(
         val path: String,
         val startMs: Long,
-        val durationMs: Long
+        val durationMs: Long,
+        val speed: Double = 1.0,
+        val volume: Double = 1.0
     )
 }

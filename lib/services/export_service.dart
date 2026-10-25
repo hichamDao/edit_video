@@ -252,15 +252,33 @@ class ExportService {
         final clip = seg.clip;
         final path = clip?.assetPath ?? clip?.sourcePath;
         if (clip == null || path == null || path.isEmpty) continue;
-        final effective = clip.effectiveDuration;
-        if (effective <= Duration.zero) continue;
+        final source = clip.sourceDuration;
+        if (source <= Duration.zero) continue;
         (isVideo ? video : audio).add({
           'path': path,
           'startMs': clip.trimStart.inMilliseconds,
-          'durationMs': effective.inMilliseconds,
+          'durationMs': source.inMilliseconds, // durée SOURCE (avant vitesse)
+          'speed': clip.speed,
+          'volume': clip.volume,
         });
       }
     }
-    return jsonEncode({'video': video, 'audio': audio});
+    final texts = <Map<String, dynamic>>[];
+    for (final track in project.tracks) {
+      if (track.type != TrackType.text) continue;
+      for (final seg in track.segments) {
+        final p = seg.clip?.properties;
+        if (p == null) continue;
+        texts.add({
+          'text': '${p['text'] ?? ''}',
+          'startMs': seg.timeRange.start.inMilliseconds,
+          'durationMs': seg.timeRange.duration.inMilliseconds,
+          'color': p['color'] ?? 0xFFFFFFFF,
+          'size': p['size'] ?? 56,
+          'y': p['y'] ?? 0.5,
+        });
+      }
+    }
+    return jsonEncode({'video': video, 'audio': audio, 'texts': texts});
   }
 }

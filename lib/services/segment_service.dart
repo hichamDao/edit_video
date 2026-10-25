@@ -63,16 +63,11 @@ class SegmentService {
     }
 
     // Coupe dans la source, à vitesse de lecture normale (1x).
-    final sourceCut = sourceStart + leftDuration;
+    final speed = originalClip.speed <= 0 ? 1.0 : originalClip.speed;
+    final sourceCut = sourceStart +
+        Duration(microseconds: (leftDuration.inMicroseconds * speed).round());
 
     if (sourceCut <= sourceStart || sourceCut >= sourceEnd) {
-      return [segment];
-    }
-
-    // Les deux parties doivent tenir dans la plage source disponible.
-    if (leftDuration + rightDuration != timelineDuration ||
-        leftDuration > sourceEnd - sourceStart ||
-        rightDuration > sourceEnd - sourceCut) {
       return [segment];
     }
 
@@ -91,6 +86,8 @@ class SegmentService {
       flip: originalClip.flip,
       metadata: Map<String, dynamic>.from(originalClip.metadata),
       properties: Map<String, dynamic>.from(originalClip.properties),
+      speed: originalClip.speed,
+      volume: originalClip.volume,
     );
 
     // Partie 2 : point de coupe jusqu'à la fin de la plage source.
@@ -108,6 +105,8 @@ class SegmentService {
       flip: originalClip.flip,
       metadata: Map<String, dynamic>.from(originalClip.metadata),
       properties: Map<String, dynamic>.from(originalClip.properties),
+      speed: originalClip.speed,
+      volume: originalClip.volume,
     );
 
     Segment createPart({

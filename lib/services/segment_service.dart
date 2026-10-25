@@ -88,6 +88,10 @@ class SegmentService {
       properties: Map<String, dynamic>.from(originalClip.properties),
       speed: originalClip.speed,
       volume: originalClip.volume,
+      brightness: originalClip.brightness,
+      contrast: originalClip.contrast,
+      saturation: originalClip.saturation,
+      sepia: originalClip.sepia,
     );
 
     // Partie 2 : point de coupe jusqu'à la fin de la plage source.
@@ -107,6 +111,10 @@ class SegmentService {
       properties: Map<String, dynamic>.from(originalClip.properties),
       speed: originalClip.speed,
       volume: originalClip.volume,
+      brightness: originalClip.brightness,
+      contrast: originalClip.contrast,
+      saturation: originalClip.saturation,
+      sepia: originalClip.sepia,
     );
 
     Segment createPart({

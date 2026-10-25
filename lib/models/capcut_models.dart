@@ -346,6 +346,10 @@ class Clip {
   final Map<String, dynamic> properties;
   double speed;            // vitesse de lecture (0.25 - 4.0)
   double volume;           // volume (0.0 - 2.0)
+  double brightness;       // -1.0 .. 1.0 (0 = neutre)
+  double contrast;         // -1.0 .. 1.0 (0 = neutre)
+  double saturation;       // -1.0 .. 1.0 (0 = neutre, -1 = noir et blanc)
+  double sepia;            // 0.0 .. 1.0
 
   Clip({
     required this.id,
@@ -363,6 +367,10 @@ class Clip {
     Map<String, dynamic>? properties,
     this.speed = 1.0,
     this.volume = 1.0,
+    this.brightness = 0.0,
+    this.contrast = 0.0,
+    this.saturation = 0.0,
+    this.sepia = 0.0,
   })  : scale = scale ?? Scale.one(),
         transform = transform ?? Transform.identity(),
         flip = flip ?? Flip.none(),
@@ -393,8 +401,15 @@ class Clip {
       'properties': properties,
       'speed': speed,
       'volume': volume,
+      'brightness': brightness,
+      'contrast': contrast,
+      'saturation': saturation,
+      'sepia': sepia,
     };
   }
+
+  bool get hasFilters =>
+      brightness != 0 || contrast != 0 || saturation != 0 || sepia != 0;
 }
 
 enum ClipType { video, audio, text, image }

@@ -260,6 +260,10 @@ class ExportService {
           'durationMs': source.inMilliseconds, // durée SOURCE (avant vitesse)
           'speed': clip.speed,
           'volume': clip.volume,
+          'brightness': clip.brightness,
+          'contrast': clip.contrast,
+          'saturation': clip.saturation,
+          'sepia': clip.sepia,
         });
       }
     }

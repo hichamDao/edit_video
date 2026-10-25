@@ -952,6 +952,127 @@ class _EditorScreenState extends State<EditorScreen> {
     return Stack(fit: StackFit.expand, children: [base, ...overlays]);
   }
 
+  // ───────────────────────── Filtres ─────────────────────────
+
+  List<double> _mul5(List<double> a, List<double> b) {
+    final r = List<double>.filled(25, 0);
+    for (var i = 0; i < 5; i++) {
+      for (var j = 0; j < 5; j++) {
+        var v = 0.0;
+        for (var k = 0; k < 5; k++) {
+          v += a[i * 5 + k] * b[k * 5 + j];
+        }
+        r[i * 5 + j] = v;
+      }
+    }
+    return r;
+  }
+
+  /// Matrice couleur 4x5 (Flutter ColorFilter.matrix) : saturation → sépia → contraste → luminosité.
+  List<double> _filterMatrix(Clip c) {
+    List<double> identity() => [
+          1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1
+        ];
+    final s = 1 + c.saturation;
+    const lr = 0.2126, lg = 0.7152, lb = 0.0722;
+    final sat = identity();
+    sat.setAll(0, [
+      lr * (1 - s) + s, lg * (1 - s), lb * (1 - s), 0, 0,
+      lr * (1 - s), lg * (1 - s) + s, lb * (1 - s), 0, 0,
+      lr * (1 - s), lg * (1 - s), lb * (1 - s) + s, 0, 0,
+    ]);
+    final a = c.sepia.clamp(0.0, 1.0).toDouble();
+    final sep = identity();
+    sep.setAll(0, [
+      1 - a + a * 0.393, a * 0.769, a * 0.189, 0, 0,
+      a * 0.349, 1 - a + a * 0.686, a * 0.168, 0, 0,
+      a * 0.272, a * 0.534, 1 - a + a * 0.131, 0, 0,
+    ]);
+    final k = 1 + c.contrast;
+    final off = (0.5 - 0.5 * k) * 255;
+    final con = identity();
+    con[0] = k; con[6] = k; con[12] = k;
+    con[4] = off; con[9] = off; con[14] = off;
+    final bri = identity();
+    bri[4] = c.brightness * 255; bri[9] = c.brightness * 255; bri[14] = c.brightness * 255;
+    final m = _mul5(bri, _mul5(con, _mul5(sep, sat)));
+    return m.sublist(0, 20);
+  }
+
+  Future<void> _editFilters() async {
+    final seg = _selectedSegment;
+    final clip = seg?.clip;
+    if (seg == null || clip == null || clip.type == ClipType.text) return;
+
+    void preset(double b, double c, double s, double sp) {
+      clip.brightness = b;
+      clip.contrast = c;
+      clip.saturation = s;
+      clip.sepia = sp;
+    }
+
+    final presets = <String, List<double>>{
+      'Original': [0, 0, 0, 0],
+      'N&B': [0, 0.1, -1, 0],
+      'Sépia': [0, 0, 0, 1],
+      'Chaud': [0.05, 0, 0.2, 0.35],
+      'Vif': [0, 0.2, 0.5, 0],
+      'Drame': [-0.05, 0.4, -0.3, 0],
+      'Fondu': [0.08, -0.25, -0.2, 0],
+    };
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setL) {
+          void update(VoidCallback f) {
+            setL(f);
+            setState(() {});
+          }
+
+          Widget slider(String label, double v, double min, double max, void Function(double) on) {
+            return Row(children: [
+              SizedBox(width: 90, child: Text(label)),
+              Expanded(
+                child: Slider(
+                  min: min, max: max, value: v.clamp(min, max).toDouble(),
+                  onChanged: (x) => update(() => on(x)),
+                ),
+              ),
+            ]);
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final e in presets.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ActionChip(
+                        label: Text(e.key),
+                        onPressed: () => update(() => preset(e.value[0], e.value[1], e.value[2], e.value[3])),
+                      ),
+                    ),
+                ]),
+              ),
+              slider('Luminosité', clip.brightness, -1, 1, (x) => clip.brightness = x),
+              slider('Contraste', clip.contrast, -1, 1, (x) => clip.contrast = x),
+              slider('Saturation', clip.saturation, -1, 1, (x) => clip.saturation = x),
+              slider('Sépia', clip.sepia, 0, 1, (x) => clip.sepia = x),
+              FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ]),
+          );
+        },
+      ),
+    );
+    ProjectHolder.current = _project;
+    if (mounted) setState(() {});
+  }
+
   // ─────────────────── Vitesse et volume ───────────────────
 
   Future<void> _editSpeedVolume() async {
@@ -1064,6 +1185,12 @@ class _EditorScreenState extends State<EditorScreen> {
               icon: const Icon(Icons.speed, size: 18),
               label: const Text('Vitesse/Volume'),
             ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _editFilters,
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Filtres'),
+            ),
           ],
           if (selected != null) ...[
             const SizedBox(width: 8),
@@ -1135,7 +1262,12 @@ class _EditorScreenState extends State<EditorScreen> {
                   ? Center(
                 child: AspectRatio(
                   aspectRatio: controller.value.aspectRatio,
-                  child: VideoPlayer(controller),
+                  child: (_selectedSegment?.clip?.hasFilters ?? false)
+                      ? ColorFiltered(
+                          colorFilter: ColorFilter.matrix(_filterMatrix(_selectedSegment!.clip!)),
+                          child: VideoPlayer(controller),
+                        )
+                      : VideoPlayer(controller),
                 ),
               )
                   : const Center(

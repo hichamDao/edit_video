@@ -11,6 +11,10 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.audio.SonicAudioProcessor
+import androidx.media3.effect.Brightness
+import androidx.media3.effect.Contrast
+import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.RgbMatrix
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.SpeedChangeEffect
@@ -227,7 +231,9 @@ class Media3ExportService(
             val o = arr.getJSONObject(i)
             list.add(ClipItem(
                 o.getString("path"), o.optLong("startMs", 0L), o.optLong("durationMs", 0L),
-                o.optDouble("speed", 1.0), o.optDouble("volume", 1.0)
+                o.optDouble("speed", 1.0), o.optDouble("volume", 1.0),
+                o.optDouble("brightness", 0.0), o.optDouble("contrast", 0.0),
+                o.optDouble("saturation", 0.0), o.optDouble("sepia", 0.0)
             ))
         }
         return list
@@ -260,6 +266,13 @@ class Media3ExportService(
             }
             audioProcs.add(mixer)
         }
+        // Filtres : meme ordre que l'apercu (saturation, sepia, contraste, luminosite).
+        if (item.saturation != 0.0) {
+            videoEffects.add(HslAdjustment.Builder().adjustSaturation((item.saturation * 100).toFloat()).build())
+        }
+        if (item.sepia > 0.0) videoEffects.add(SepiaMatrix(item.sepia.toFloat()))
+        if (item.contrast != 0.0) videoEffects.add(Contrast(item.contrast.toFloat()))
+        if (item.brightness != 0.0) videoEffects.add(Brightness(item.brightness.toFloat()))
         if (height > 0) videoEffects.add(Presentation.createForHeight(height))
         if (audioProcs.isNotEmpty() || videoEffects.isNotEmpty()) {
             b.setEffects(Effects(audioProcs, videoEffects))
@@ -330,6 +343,21 @@ class Media3ExportService(
         }
     }
 
+    /** Sepia partiel : melange entre l'identite et la matrice sepia (colonne-major 4x4). */
+    private class SepiaMatrix(private val a: Float) : RgbMatrix {
+        override fun getMatrix(presentationTimeUs: Long, useHdr: Boolean): FloatArray {
+            val r0 = floatArrayOf(1 - a + a * 0.393f, a * 0.769f, a * 0.189f)
+            val r1 = floatArrayOf(a * 0.349f, 1 - a + a * 0.686f, a * 0.168f)
+            val r2 = floatArrayOf(a * 0.272f, a * 0.534f, 1 - a + a * 0.131f)
+            return floatArrayOf(
+                r0[0], r1[0], r2[0], 0f,
+                r0[1], r1[1], r2[1], 0f,
+                r0[2], r1[2], r2[2], 0f,
+                0f, 0f, 0f, 1f
+            )
+        }
+    }
+
     private data class TextItem(
         val text: String, val startMs: Long, val durationMs: Long,
         val color: Int, val size: Double, val y: Double
@@ -358,6 +386,10 @@ class Media3ExportService(
         val startMs: Long,
         val durationMs: Long,
         val speed: Double = 1.0,
-        val volume: Double = 1.0
+        val volume: Double = 1.0,
+        val brightness: Double = 0.0,
+        val contrast: Double = 0.0,
+        val saturation: Double = 0.0,
+        val sepia: Double = 0.0
     )
 }

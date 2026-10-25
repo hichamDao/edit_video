@@ -1,13 +1,12 @@
-
-/// Couche d'édition — Service des segments vidéo.
-/// Découpe, rognage, déplacement et préparation du projet à l'export.
+// Couche d'édition — Service des segments vidéo.
+// Découpe, rognage, déplacement et préparation du projet à l'export.
 
 import 'package:uuid/uuid.dart';
 import '../models/capcut_models.dart';
 
-/// ============================================================================
-/// 1. SEGMENT SERVICE
-/// ============================================================================
+// ============================================================================
+// 1. SEGMENT SERVICE
+// ============================================================================
 
 class SegmentService {
   static final SegmentService _instance = SegmentService._internal();

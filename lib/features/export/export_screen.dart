@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../services/export_service.dart';
 import '../../core/project_holder.dart';
@@ -122,7 +122,8 @@ class _ExportScreenState extends State<ExportScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _exportService.status == ExportStatus.processing
+                        onPressed: (_exportService.status == ExportStatus.processing ||
+                                _exportService.status == ExportStatus.preparing)
                             ? null
                             : () async {
                                 if (project == null) {
@@ -142,6 +143,7 @@ class _ExportScreenState extends State<ExportScreen> {
                                   outputPath: outputPath,
                                   config: cfg,
                                 );
+                                if (!mounted) return;
                                 setState(() {});
                               },
                         style: ElevatedButton.styleFrom(
@@ -157,6 +159,15 @@ class _ExportScreenState extends State<ExportScreen> {
                         ),
                       ),
                     ),
+                    if (_exportService.status == ExportStatus.processing ||
+                        _exportService.status == ExportStatus.preparing)
+                      TextButton(
+                        onPressed: () {
+                          _exportService.cancel();
+                          setState(() {});
+                        },
+                        child: const Text('Annuler l\'export'),
+                      ),
                     const SizedBox(height: 12),
                     if (p != null && p.status == ExportStatus.processing)
                       Column(
@@ -180,7 +191,7 @@ class _ExportScreenState extends State<ExportScreen> {
                       ),
                     if (_exportService.status == ExportStatus.failed)
                       Text('Echec: ${_exportService.message}',
-                          style: TextStyle(color: Colors.red, fontSize: 16)),
+                          style: const TextStyle(color: Colors.red, fontSize: 16)),
                     if (_exportService.status == ExportStatus.unsupported)
                       const Text(
                         'Export natif non disponible sur cette plateforme',

@@ -1,4 +1,4 @@
-﻿/// Chaîne d'export — Pont natif Media3 Transformer (Android) via MethodChannel.
+/// Chaîne d'export — Pont natif Media3 Transformer (Android) via MethodChannel.
 /// L'export réel est exécuté côté Kotlin (Media3 1.4.1) ; ce service Dart envoie la
 /// composition sérialisée et reçoit les événements de progression / fin / erreur.
 /// Compatible hors Android (Web/Desktop) : le service tombe en mode "non disponible"
@@ -132,6 +132,7 @@ class ExportService {
   bool get _isNativeAvailable => Platform.isAndroid;
 
   bool _closed = false;
+  Completer<ExportResult>? _pending;
 
   void _emit(ExportProgress p) {
     if (_closed || _controller.isClosed) return;
@@ -169,12 +170,13 @@ class ExportService {
     ));
 
     final completer = Completer<ExportResult>();
+    _pending = completer;
     late StreamSubscription sub;
     sub = _controller.stream.listen((p) {
       onProgress?.call(p);
       if (p.status == ExportStatus.completed) {
-        _outputPath = outputPath;
-        completer.complete(ExportResult(success: true, outputPath: outputPath));
+        // _outputPath contient l'URI galerie renvoyé par le natif (événement 'done').
+        completer.complete(ExportResult(success: true, outputPath: _outputPath ?? outputPath));
         sub.cancel();
       } else if (p.status == ExportStatus.failed) {
         completer.complete(ExportResult(success: false, error: p.message));
@@ -188,7 +190,9 @@ class ExportService {
         'outputPath': outputPath,
         'videoMimeType': cfg.videoMimeType,
         'audioMimeType': cfg.audioMimeType,
-        'outputHeight': cfg.outputHeight,
+        'outputHeight': cfg.outputHeight > 0 ? cfg.outputHeight : cfg.height,
+        'bitrate': cfg.bitrate,
+        'includeAudio': cfg.includeAudio,
       });
     } catch (e) {
       _emit(ExportProgress(
@@ -209,14 +213,16 @@ class ExportService {
   void cancel() {
     _sub.forEach((s) => s.cancel());
     _sub.clear();
-    try {
-      _channel.invokeMethod('cancelExport');
-    } catch (_) {}
+    _channel.invokeMethod('cancelExport').catchError((_) {});
     _emit(ExportProgress(
       progress: 0.0,
       status: ExportStatus.idle,
       message: 'Annulé',
     ));
+    final p = _pending;
+    if (p != null && !p.isCompleted) {
+      p.complete(ExportResult(success: false, error: 'Annulé'));
+    }
   }
 
   void dispose() {
@@ -228,24 +234,30 @@ class ExportService {
     }
   }
 
-  /// Construit la chaîne JSON de la composition depuis les pistes du projet.
-  /// Chaque clip est un { "path", "startMs", "durationMs" }.
+  /// Construit la composition JSON : {"video":[...], "audio":[...]}.
+  /// Chaque entrée = { path, startMs (début source), durationMs }.
+  /// Les pistes audio sont jouées en parallèle de la vidéo (séquence séparée).
   String _buildComposition(Project project) {
-    final items = <Map<String, dynamic>>[];
+    final video = <Map<String, dynamic>>[];
+    final audio = <Map<String, dynamic>>[];
     for (final track in project.tracks) {
-      if (track.type != TrackType.video && track.type != TrackType.audio) continue;
-      for (final seg in track.segments) {
-        final path = seg.clip?.assetPath ?? seg.clip?.sourcePath;
-        if (path == null || path.isEmpty) continue;
-        final trimStart = seg.clip?.trimStart ?? Duration.zero;
-        final effective = seg.clip?.effectiveDuration ?? seg.timeRange.duration;
-        items.add({
+      final isVideo = track.type == TrackType.video;
+      if (!isVideo && track.type != TrackType.audio) continue;
+      final ordered = [...track.segments]
+        ..sort((a, b) => a.timeRange.start.compareTo(b.timeRange.start));
+      for (final seg in ordered) {
+        final clip = seg.clip;
+        final path = clip?.assetPath ?? clip?.sourcePath;
+        if (clip == null || path == null || path.isEmpty) continue;
+        final effective = clip.effectiveDuration;
+        if (effective <= Duration.zero) continue;
+        (isVideo ? video : audio).add({
           'path': path,
-          'startMs': trimStart.inMilliseconds,
-          'durationMs': effective.inMilliseconds > 0 ? effective.inMilliseconds : seg.timeRange.duration.inMilliseconds,
+          'startMs': clip.trimStart.inMilliseconds,
+          'durationMs': effective.inMilliseconds,
         });
       }
     }
-    return jsonEncode(items);
+    return jsonEncode({'video': video, 'audio': audio});
   }
 }

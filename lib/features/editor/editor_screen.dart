@@ -1,11 +1,10 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_player/video_player.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../models/capcut_models.dart';
 import '../../services/segment_service.dart';
-import '../../services/export_service.dart';
 import '../../services/video_metadata_service.dart';
 import '../../core/project_holder.dart';
 
@@ -20,7 +19,6 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final _projectService = ProjectServiceImpl();
-  final _exportService = ExportService();
   final _metadataService = VideoMetadataService();
   final _uuid = const Uuid();
 
@@ -54,6 +52,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Lit la durée réelle via le pont natif (MediaMetadataRetriever)
     final metadata = await _metadataService.readMetadata(path);
+    if (!mounted) return;
+    if (metadata == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Durée réelle illisible : 5 s utilisées par défaut')));
+    }
     final duration = metadata?.duration ?? const Duration(seconds: 5);
 
     // Crée un Clip (matériau CapCut) puis un Segment qui le référence
@@ -85,24 +88,10 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final videoTrack = _project!.tracks.firstWhere(
       (t) => t.type == TrackType.video,
-      orElse: () => _project!.tracks.firstWhere((t) => t.type == TrackType.video, orElse: () => _project!.tracks[0]),
+      orElse: () => _project!.tracks[0],
     );
     _projectService.addSegment(_project!, videoTrack.id, segment);
-    // Ensure order by current start times first, then recompute contiguous
-    videoTrack.segments.sort((a,b) => a.timeRange.start.compareTo(b.timeRange.start));
-    Duration cursor = Duration.zero;
-    for (final seg in videoTrack.segments) {
-      final durEff = seg.clip?.effectiveDuration ?? seg.timeRange.duration;
-      seg.timeRange = TimeRange(start: cursor, duration: durEff);
-      debugPrint('[POS] id:${seg.id} name:${seg.name} idx:${videoTrack.segments.indexOf(seg)} start:${seg.timeRange.start.inMilliseconds}ms end:${(seg.timeRange.start+durEff).inMilliseconds}ms clipDur:${seg.clip?.duration.inMilliseconds} trimS:${seg.clip?.trimStart.inMilliseconds} trimE:${seg.clip?.trimEnd.inMilliseconds} eff:${durEff.inMilliseconds}ms left:${80 + seg.timeRange.start.inMilliseconds/1000*60}px w:${(durEff.inMilliseconds/1000*60).clamp(40,400)}px');
-      cursor += durEff;
-    }
-    debugPrint('[TLEN] videoTotal:${videoTrack.segments.fold(Duration.zero,(p,s)=>p + (s.clip?.effectiveDuration??s.timeRange.duration)).inMilliseconds}ms trackCount:${videoTrack.segments.length}');
-    for (final s in videoTrack.segments) {
-      final durEff = s.clip?.effectiveDuration ?? s.timeRange.duration;
-      debugPrint('[IMP] id:${s.id} ord:${videoTrack.segments.indexOf(s)} durEff:${durEff.inMilliseconds}ms start:${s.timeRange.start.inMilliseconds}ms end:${(s.timeRange.start + durEff).inMilliseconds}ms left:${80 + s.timeRange.start.inMilliseconds/1000*60}px w:${(durEff.inMilliseconds/1000*60).clamp(40,400)}px');
-    }
-    setState(() {});
+    _recomputeTimeline();
   }
 
   // ── Ajout d'un segment vide ──
@@ -134,7 +123,8 @@ class _EditorScreenState extends State<EditorScreen> {
       orElse: () => _project!.tracks.first,
     );
     _projectService.splitSegmentAt(_project!, track.id, _selectedSegment!.id, at);
-    setState(() {});
+    _selectedSegment = null;
+    _recomputeTimeline();
   }
 
   // ── Recalcule les positions séquentielles des clips vidéo ──
@@ -212,8 +202,10 @@ class _EditorScreenState extends State<EditorScreen> {
         ],
       ),
     );
+    final text = controller.text;
+    controller.dispose();
     if (ok != true) return;
-    final parts = controller.text.split(',');
+    final parts = text.split(',');
     if (parts.length != 2) return;
     final ts = int.tryParse(parts[0].trim()) ?? 0;
     final te = int.tryParse(parts[1].trim()) ?? 0;
@@ -225,7 +217,9 @@ class _EditorScreenState extends State<EditorScreen> {
     _recomputeTimeline();
   }
   void _playSegment(Segment segment) {
-    _videoController?.dispose();
+    final old = _videoController;
+    _videoController = null;
+    old?.dispose();
     final assetPath = segment.clip?.assetPath;
     if (assetPath != null) {
       _videoController = VideoPlayerController.file(File(assetPath))
@@ -330,10 +324,6 @@ class _EditorScreenState extends State<EditorScreen> {
                                   itemCount: _project!.tracks.length,
                                   itemBuilder: (context, ti) {
                                     final track = _project!.tracks[ti];
-                                    debugPrint('[TL] track:${track.name} segs:${track.segments.length}');
-                                    for (final s in track.segments) {
-                                      debugPrint('[TL] seg:${s.id} name:${s.name} dur:${s.timeRange.duration.inMilliseconds}');
-                                    }
                                     return Container(
                                       height: 64,
                                       color: track.type == TrackType.video

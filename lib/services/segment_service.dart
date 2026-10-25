@@ -27,6 +27,31 @@ class SegmentService {
     final leftDuration = at - segment.timeRange.start;
     final rightDuration = segment.timeRange.duration - leftDuration;
 
+    final c = segment.clip;
+    Clip? leftClip;
+    Clip? rightClip;
+    if (c != null) {
+      // Chaque moitié reçoit son propre Clip avec le bon rognage source,
+      // sinon les deux moitiés réutiliseraient la source entière (doublon à l'export).
+      Clip cut(String suffix, Duration ts, Duration te) => Clip(
+            id: '${c.id}$suffix',
+            name: c.name,
+            assetPath: c.assetPath,
+            sourcePath: c.sourcePath,
+            type: c.type,
+            duration: c.duration,
+            trimStart: ts,
+            trimEnd: te,
+            scale: c.scale,
+            transform: c.transform,
+            flip: c.flip,
+            metadata: c.metadata,
+            properties: c.properties,
+          );
+      leftClip = cut('_a', c.trimStart, c.duration - c.trimStart - leftDuration);
+      rightClip = cut('_b', c.trimStart + leftDuration, c.trimEnd);
+    }
+
     final left = Segment(
       id: '${segment.id}_a',
       name: '${segment.name} (partie 1)',
@@ -34,8 +59,8 @@ class SegmentService {
         start: segment.timeRange.start,
         duration: leftDuration,
       ),
-      clipId: segment.clipId,
-      clip: segment.clip,
+      clipId: leftClip?.id ?? segment.clipId,
+      clip: leftClip ?? segment.clip,
       offset: segment.offset,
       transform: segment.transform,
       flip: segment.flip,
@@ -49,8 +74,8 @@ class SegmentService {
         start: at,
         duration: rightDuration,
       ),
-      clipId: segment.clipId,
-      clip: segment.clip,
+      clipId: rightClip?.id ?? segment.clipId,
+      clip: rightClip ?? segment.clip,
       offset: segment.offset,
       transform: segment.transform,
       flip: segment.flip,

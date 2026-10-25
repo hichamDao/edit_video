@@ -65,12 +65,16 @@ class MainActivity: FlutterActivity() {
                     val videoMimeType = call.argument<String>("videoMimeType")
                     val audioMimeType = call.argument<String>("audioMimeType")
                     val outputHeight = call.argument<Int>("outputHeight") ?: 0
+                    val bitrate = call.argument<Int>("bitrate") ?: 0
+                    val includeAudio = call.argument<Boolean>("includeAudio") ?: true
                     exportService?.startExport(
                         compositionJson = compositionJson,
                         outputPath = outputPath,
                         videoMimeType = videoMimeType,
                         audioMimeType = audioMimeType,
-                        outputHeight = outputHeight
+                        outputHeight = outputHeight,
+                        bitrate = bitrate,
+                        includeAudio = includeAudio
                     )
                     result.success(true)
                 }

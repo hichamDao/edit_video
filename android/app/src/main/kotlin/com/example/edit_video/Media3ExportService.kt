@@ -1,4 +1,4 @@
-﻿package com.example.edit_video
+package com.example.edit_video
 
 import android.content.Context
 import android.content.ContentValues
@@ -75,6 +75,8 @@ class Media3ExportService(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var progressHandler: Handler? = null
     private var progressPolling = false
+    @Volatile private var cancelled = false
+    private var currentTempPath: String? = null
     private var outputPath: String = ""
 
     fun startExport(
@@ -89,6 +91,8 @@ class Media3ExportService(
         height: Int = 0
     ) {
         cancelExport()
+        cancelled = false
+        currentTempPath = outputPath
         this.outputPath = outputPath
         val parsed = try {
             parseComposition(compositionJson)
@@ -139,6 +143,10 @@ class Media3ExportService(
                     progressPolling = false
                     // Copie vers la galerie hors du thread principal (fichiers volumineux).
                     Thread {
+                        if (cancelled) {
+                            try { File(outputPath).delete() } catch (_: Exception) {}
+                            return@Thread
+                        }
                         try {
                             val publicUri = publishToGallery(outputPath)
                             File(outputPath).delete()
@@ -184,10 +192,14 @@ class Media3ExportService(
     }
 
     fun cancelExport() {
+        cancelled = true // les evenements tardifs (progress/done/error) sont ignores
         progressPolling = false
         progressHandler?.removeCallbacksAndMessages(null)
         transformer?.cancel()
         transformer = null
+        // Supprime l'export partiel : un export annule n'est jamais publie.
+        currentTempPath?.let { try { File(it).delete() } catch (_: Exception) {} }
+        currentTempPath = null
     }
 
     private fun startProgressPolling() {
@@ -321,6 +333,7 @@ class Media3ExportService(
     }
 
     private fun sendProgress(progress: Double, state: String, message: String) {
+        if (cancelled) return
         val map = JSONObject()
             .put("progress", progress)
             .put("state", state)
@@ -363,6 +376,7 @@ class Media3ExportService(
     }
 
     private fun sendDone(outputPath: String) {
+        if (cancelled) return
         progressPolling = false
         progressHandler?.removeCallbacksAndMessages(null)
         val map = JSONObject()
@@ -373,6 +387,7 @@ class Media3ExportService(
     }
 
     private fun sendError(code: String, message: String) {
+        if (cancelled) return
         progressPolling = false
         progressHandler?.removeCallbacksAndMessages(null)
         val map = JSONObject()

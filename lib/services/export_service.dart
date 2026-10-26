@@ -75,6 +75,7 @@ class ExportService {
   }
 
   Future<dynamic> _handleNativeCall(MethodCall call) async {
+    if (_cancelled) return null;
     switch (call.method) {
       case 'progress':
         final raw = call.arguments as String?;
@@ -131,6 +132,7 @@ class ExportService {
 
   bool _closed = false;
   Completer<ExportResult>? _pending;
+  bool _cancelled = false; // ignore les evenements natifs tardifs apres annulation
 
   void _emit(ExportProgress p) {
     if (_closed || _controller.isClosed) return;
@@ -167,6 +169,7 @@ class ExportService {
       message: 'Préparation de l\'export (Media3 Transformer)...',
     ));
 
+    _cancelled = false;
     final completer = Completer<ExportResult>();
     _pending = completer;
     late StreamSubscription sub;
@@ -217,6 +220,7 @@ class ExportService {
 
   /// Annule l'export en cours.
   void cancel() {
+    _cancelled = true;
     for (final s in _sub) {
       s.cancel();
     }

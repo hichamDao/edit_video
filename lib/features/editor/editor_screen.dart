@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -518,8 +518,11 @@ class _EditorScreenState extends State<EditorScreen> {
       });
 
       ProjectHolder.current = _project;
+      await _selectSegment(selected); // recharge l'aperçu avec la nouvelle plage
     } finally {
-      controller.dispose();
+      // Le dialog joue encore son animation de fermeture : disposer tout de
+      // suite le controller du TextField provoque l'écran rouge.
+      Future.delayed(const Duration(milliseconds: 500), controller.dispose);
     }
   }
 
@@ -1329,6 +1332,59 @@ class _EditorScreenState extends State<EditorScreen> {
     return Stack(fit: StackFit.expand, children: [base, ...overlays]);
   }
 
+  // ───────────── Matrice couleur de l'aperçu (filtres) ─────────────
+
+  List<double> _mul5(List<double> a, List<double> b) {
+    final r = List<double>.filled(25, 0);
+    for (var i = 0; i < 5; i++) {
+      for (var j = 0; j < 5; j++) {
+        var v = 0.0;
+        for (var k = 0; k < 5; k++) {
+          v += a[i * 5 + k] * b[k * 5 + j];
+        }
+        r[i * 5 + j] = v;
+      }
+    }
+    return r;
+  }
+
+  /// Même ordre que l'export Media3 : saturation → sépia → contraste → luminosité.
+  List<double> _filterMatrix(Clip c) {
+    List<double> id() => [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1];
+    final sv = 1 + c.saturation;
+    const lr = 0.2126, lg = 0.7152, lb = 0.0722;
+    final sat = id()..setAll(0, [
+      lr * (1 - sv) + sv, lg * (1 - sv), lb * (1 - sv), 0, 0,
+      lr * (1 - sv), lg * (1 - sv) + sv, lb * (1 - sv), 0, 0,
+      lr * (1 - sv), lg * (1 - sv), lb * (1 - sv) + sv, 0, 0,
+    ]);
+    final a = c.sepia.clamp(0.0, 1.0).toDouble();
+    final sep = id()..setAll(0, [
+      1 - a + a * 0.393, a * 0.769, a * 0.189, 0, 0,
+      a * 0.349, 1 - a + a * 0.686, a * 0.168, 0, 0,
+      a * 0.272, a * 0.534, 1 - a + a * 0.131, 0, 0,
+    ]);
+    final k = 1 + c.contrast;
+    final off = (0.5 - 0.5 * k) * 255;
+    final con = id();
+    con[0] = k; con[6] = k; con[12] = k;
+    con[4] = off; con[9] = off; con[14] = off;
+    final bri = id();
+    bri[4] = c.brightness * 255; bri[9] = c.brightness * 255; bri[14] = c.brightness * 255;
+    return _mul5(bri, _mul5(con, _mul5(sep, sat))).sublist(0, 20);
+  }
+
+  Widget _filteredVideo(VideoPlayerController controller) {
+    final clip = _selectedSegment?.clip;
+    if (clip == null || clip.type == ClipType.text || !clip.hasFilters) {
+      return VideoPlayer(controller);
+    }
+    return ColorFiltered(
+      colorFilter: ColorFilter.matrix(_filterMatrix(clip)),
+      child: VideoPlayer(controller),
+    );
+  }
+
   // ───────────────────────── Filtres ─────────────────────────
 
   Future<void> _editFilters() async {
@@ -1687,7 +1743,7 @@ class _EditorScreenState extends State<EditorScreen> {
             flex: 3,
               child: _previewWithText(
                 controller != null
-                    ? VideoPlayer(controller)
+                    ? _filteredVideo(controller)
                     : const SizedBox.expand(),
               ),
           ),

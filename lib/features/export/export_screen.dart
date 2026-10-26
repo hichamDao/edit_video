@@ -17,7 +17,6 @@ class _ExportScreenState extends State<ExportScreen> {
 
   int _width = 1920;
   int _height = 1080;
-  int _fps = 30;
   int _bitrate = 8000000;
   bool _includeAudio = true;
 
@@ -84,18 +83,6 @@ class _ExportScreenState extends State<ExportScreen> {
               }),
             ),
             const SizedBox(height: 16),
-            const Text('FPS',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            DropdownButton<int>(
-              value: _fps,
-              items: const [
-                DropdownMenuItem(value: 24, child: Text('24 fps')),
-                DropdownMenuItem(value: 30, child: Text('30 fps')),
-                DropdownMenuItem(value: 60, child: Text('60 fps')),
-              ],
-              onChanged: (v) => setState(() => _fps = v!),
-            ),
-            const SizedBox(height: 16),
             const Text('Bitrate (bps)',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             Slider(
@@ -130,12 +117,11 @@ class _ExportScreenState extends State<ExportScreen> {
                                   _showMessage('Aucun projet a exporter');
                                   return;
                                 }
-                                final cfg = ExportVideoConfig()
-                                  ..width = _width
-                                  ..height = _height
-                                  ..bitrate = _bitrate
-                                  ..fps = _fps
-                                  ..includeAudio = _includeAudio;
+                                  final cfg = ExportVideoConfig()
+                                    ..width = _width
+                                    ..height = _height
+                                    ..bitrate = _bitrate
+                                    ..includeAudio = _includeAudio;
 
                                 final outputPath = await _getOutputPath();
                                 await _exportService.exportProject(

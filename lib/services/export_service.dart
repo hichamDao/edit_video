@@ -45,7 +45,6 @@ class ExportVideoConfig {
   int width = 1920;
   int height = 1080;
   int bitrate = 8000000;
-  int fps = 30;
   String? videoMimeType; // ex: 'video/avc1'
   String? audioMimeType; // ex: 'audio/mp4a'
   int outputHeight = 0; // 0 = auto
@@ -58,7 +57,6 @@ class ExportVideoConfig {
       'width': width,
       'height': height,
       'bitrate': bitrate,
-      'fps': fps,
       'videoMimeType': videoMimeType,
       'audioMimeType': audioMimeType,
       'outputHeight': outputHeight,
@@ -115,12 +113,13 @@ class ExportService {
     return null;
   }
 
+  final _controller = StreamController<ExportProgress>.broadcast();
+  final _sub = <StreamSubscription>[];
+
   ExportStatus _status = ExportStatus.idle;
   double _progress = 0.0;
   String? _message;
   String? _outputPath;
-  final _controller = StreamController<ExportProgress>.broadcast();
-  final _sub = <StreamSubscription>[];
 
   ExportStatus get status => _status;
   double get progress => _progress;
@@ -174,14 +173,20 @@ class ExportService {
     sub = _controller.stream.listen((p) {
       onProgress?.call(p);
       if (p.status == ExportStatus.completed) {
-        // _outputPath contient l'URI galerie renvoyé par le natif (événement 'done').
-        completer.complete(ExportResult(success: true, outputPath: _outputPath ?? outputPath));
+        if (!completer.isCompleted) {
+          completer.complete(ExportResult(success: true, outputPath: _outputPath ?? outputPath));
+        }
+        _sub.remove(sub);
         sub.cancel();
       } else if (p.status == ExportStatus.failed) {
-        completer.complete(ExportResult(success: false, error: p.message));
+        if (!completer.isCompleted) {
+          completer.complete(ExportResult(success: false, error: p.message));
+        }
+        _sub.remove(sub);
         sub.cancel();
       }
     });
+    _sub.add(sub);
 
     try {
       await _channel.invokeMethod('startExport', {
@@ -192,6 +197,8 @@ class ExportService {
         'outputHeight': cfg.outputHeight > 0 ? cfg.outputHeight : cfg.height,
         'bitrate': cfg.bitrate,
         'includeAudio': cfg.includeAudio,
+        'width': cfg.width,
+        'height': cfg.height,
       });
     } catch (e) {
       _emit(ExportProgress(
@@ -221,6 +228,7 @@ class ExportService {
       message: 'Annulé',
     ));
     final p = _pending;
+    _pending = null;
     if (p != null && !p.isCompleted) {
       p.complete(ExportResult(success: false, error: 'Annulé'));
     }

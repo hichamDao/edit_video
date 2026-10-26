@@ -67,6 +67,8 @@ class MainActivity: FlutterActivity() {
                     val outputHeight = call.argument<Int>("outputHeight") ?: 0
                     val bitrate = call.argument<Int>("bitrate") ?: 0
                     val includeAudio = call.argument<Boolean>("includeAudio") ?: true
+                    val width = call.argument<Int>("width") ?: 1920
+                    val height = call.argument<Int>("height") ?: 1080
                     exportService?.startExport(
                         compositionJson = compositionJson,
                         outputPath = outputPath,
@@ -74,7 +76,9 @@ class MainActivity: FlutterActivity() {
                         audioMimeType = audioMimeType,
                         outputHeight = outputHeight,
                         bitrate = bitrate,
-                        includeAudio = includeAudio
+                        includeAudio = includeAudio,
+                        width = width,
+                        height = height
                     )
                     result.success(true)
                 }

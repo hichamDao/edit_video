@@ -29,6 +29,13 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Duration _playheadPosition = Duration.zero;
 
+  bool _textEditingMode = false;
+  String? _editingTextSegmentId;
+  TextEditingController? _inlineTextController;
+  FocusNode? _inlineTextFocusNode;
+  Segment? _tempTextSegment;
+  final GlobalKey _previewKey = GlobalKey();
+
   static const double _trackLabelWidth = 80;
   static const double _pixelsPerSecond = 60;
   static const double _minimumClipWidth = 40;
@@ -43,6 +50,8 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _videoController?.dispose();
+    _inlineTextController?.dispose();
+    _inlineTextFocusNode?.dispose();
     super.dispose();
   }
 
@@ -610,6 +619,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       1000 *
                       _pixelsPerSecond;
 
+              final isTextSegment = segment.clip?.type.toString() == 'ClipType.text';
               return Positioned(
                 key: ValueKey('segment_${segment.id}'),
                 left: left,
@@ -623,89 +633,182 @@ class _EditorScreenState extends State<EditorScreen> {
                     _reorderSegment(track, details.data, segment);
                   },
                   builder: (context, candidates, rejected) {
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _selectSegment(segment),
-                      child: LongPressDraggable<Segment>(
-                        data: segment,
-                        dragAnchorStrategy: pointerDragAnchorStrategy,
-                        onDragStarted: () {
-                          setState(() {
-                            _selectedSegment = segment;
-                          });
-                        },
-                        feedback: Material(
-                          color: Colors.transparent,
-                          child: Container(
-                            width: clipWidth,
-                            height: 48,
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withOpacity(0.95),
-                              borderRadius: BorderRadius.circular(5),
-                              border: Border.all(color: Colors.white),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              segment.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ),
-                        childWhenDragging: Container(
-                          width: clipWidth,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade700,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
+                    return LongPressDraggable<Segment>(
+                      data: segment,
+                      dragAnchorStrategy: pointerDragAnchorStrategy,
+                      onDragStarted: () {
+                        if (_textEditingMode) {
+                          _cancelInlineTextEdit(removeTemp: true);
+                        }
+                        setState(() {
+                          _selectedSegment = segment;
+                        });
+                      },
+                      feedback: Material(
+                        color: Colors.transparent,
                         child: Container(
                           width: clipWidth,
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          height: 48,
+                          padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: candidates.isNotEmpty
-                                ? Colors.amber
-                                : selected
-                                ? Colors.blueAccent
-                                : isVideoTrack
-                                ? Colors.blue.shade700
-                                : Colors.green.shade700,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: selected
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.3),
-                              width: selected ? 2 : 1,
+                            color: Colors.blueAccent.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: Colors.white),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            segment.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
                             ),
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                segment.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                _formatShort(_segmentDuration(segment)),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 8,
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
+                      ),
+                      childWhenDragging: Container(
+                        width: clipWidth,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade700,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      child: Stack(
+                        clipBehavior: rendering.Clip.none,
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (_textEditingMode) return;
+                              _selectSegment(segment);
+                            },
+                            onPanUpdate: isTextSegment
+                                ? (details) {
+                                    if (_textEditingMode) return;
+                                    setState(() {
+                                      _selectedSegment = segment;
+                                    });
+                                    _moveSegment(track, segment, details.delta.dx > 0 ? 1 : -1);
+                                  }
+                                : null,
+                            child: Container(
+                              width: clipWidth,
+                              padding: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                color: candidates.isNotEmpty
+                                    ? Colors.amber
+                                    : selected
+                                    ? Colors.blueAccent
+                                    : isVideoTrack
+                                    ? Colors.blue.shade700
+                                    : Colors.green.shade700,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: selected
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.3),
+                                  width: selected ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    segment.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatShort(_segmentDuration(segment)),
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (isTextSegment && selected)
+                            Positioned(
+                              left: -4,
+                              top: 0,
+                              bottom: 0,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanUpdate: (details) {
+                                  final dx = details.delta.dx / _pixelsPerSecond;
+                                  var deltaMs = (dx * 1000).round();
+                                  if (deltaMs == 0) return;
+                                  final startMs = segment.timeRange.start.inMilliseconds;
+                                  final durMs = segment.timeRange.duration.inMilliseconds;
+                                  var newStartMs = startMs + deltaMs;
+                                  var newDurMs = durMs - deltaMs;
+                                  if (newDurMs < 500) {
+                                    newDurMs = 500;
+                                    newStartMs = startMs + durMs - 500;
+                                  }
+                                  if (newStartMs < 0) {
+                                    newStartMs = 0;
+                                    newDurMs = startMs + durMs;
+                                    if (newDurMs < 500) newDurMs = 500;
+                                  }
+                                  segment.timeRange = TimeRange(
+                                    start: Duration(milliseconds: newStartMs),
+                                    duration: Duration(milliseconds: newDurMs),
+                                  );
+                                  _recomputeTimeline(refresh: false);
+                                  ProjectHolder.current = _project;
+                                  if (mounted) setState(() {});
+                                },
+                                child: Container(
+                                  width: 8,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (isTextSegment && selected)
+                            Positioned(
+                              right: -4,
+                              top: 0,
+                              bottom: 0,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanUpdate: (details) {
+                                  final dx = details.delta.dx / _pixelsPerSecond;
+                                  var deltaMs = (dx * 1000).round();
+                                  if (deltaMs == 0) return;
+                                  final durMs = segment.timeRange.duration.inMilliseconds;
+                                  var newDurMs = durMs + deltaMs;
+                                  if (newDurMs < 500) newDurMs = 500;
+                                  if (newDurMs > 15000) newDurMs = 15000;
+                                  segment.timeRange = TimeRange(
+                                    start: segment.timeRange.start,
+                                    duration: Duration(milliseconds: newDurMs),
+                                  );
+                                  _recomputeTimeline(refresh: false);
+                                  ProjectHolder.current = _project;
+                                  if (mounted) setState(() {});
+                                },
+                                child: Container(
+                                  width: 8,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },
@@ -830,8 +933,88 @@ class _EditorScreenState extends State<EditorScreen> {
 
   bool _isText(Segment? s) => s?.clip?.type == ClipType.text;
 
+  void _cancelInlineTextEdit({bool removeTemp = true}) {
+    if (_textEditingMode && removeTemp && _tempTextSegment != null && _project != null) {
+      for (final t in _project!.tracks) {
+        if (t.segments.any((x) => x.id == _tempTextSegment!.id)) {
+          _projectService.removeSegment(_project!, t.id, _tempTextSegment!.id);
+          break;
+        }
+      }
+      _recomputeTimeline(refresh: false);
+      ProjectHolder.current = _project;
+    }
+    _inlineTextFocusNode?.unfocus();
+    final controller = _inlineTextController;
+    final focusNode = _inlineTextFocusNode;
+    _inlineTextController = null;
+    _inlineTextFocusNode = null;
+    _textEditingMode = false;
+    _editingTextSegmentId = null;
+    _tempTextSegment = null;
+    _selectedSegment = null;
+    if (mounted) {
+      setState(() {});
+    }
+    if (controller != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+    }
+    if (focusNode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        focusNode.dispose();
+      });
+    }
+  }
+
+  void _commitInlineTextEdit() {
+    if (!_textEditingMode || _editingTextSegmentId == null) return;
+    final seg = _selectedSegment;
+    final clip = seg?.clip;
+    if (seg == null || clip == null || clip.type != ClipType.text) {
+      _cancelInlineTextEdit(removeTemp: false);
+      return;
+    }
+    final props = clip.properties;
+    final text = _inlineTextController?.text ?? '';
+    props['text'] = text.isEmpty ? ' ' : text;
+    if (!props.containsKey('color')) props['color'] = 0xFFFFFFFF;
+    if (!props.containsKey('size')) props['size'] = 56;
+    if (!props.containsKey('y')) props['y'] = 0.5;
+    _tempTextSegment = null;
+    _inlineTextFocusNode?.unfocus();
+    final controller = _inlineTextController;
+    final focusNode = _inlineTextFocusNode;
+    _inlineTextController = null;
+    _inlineTextFocusNode = null;
+    _textEditingMode = false;
+    _editingTextSegmentId = null;
+    if (mounted) {
+      setState(() {
+        _selectedSegment = seg;
+      });
+    } else {
+      _selectedSegment = seg;
+    }
+    ProjectHolder.current = _project;
+    if (controller != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+    }
+    if (focusNode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        focusNode.dispose();
+      });
+    }
+  }
+
   void _addText() {
     if (_project == null) return;
+    if (_textEditingMode) {
+      _cancelInlineTextEdit(removeTemp: true);
+    }
     final track = _textTrack();
     final start = _playheadPosition;
     const dur = Duration(seconds: 3);
@@ -841,7 +1024,7 @@ class _EditorScreenState extends State<EditorScreen> {
       assetPath: '',
       type: ClipType.text,
       duration: dur,
-      properties: {'text': 'Votre texte', 'color': 0xFFFFFFFF, 'size': 56, 'y': 0.5},
+      properties: {'text': '', 'color': 0xFFFFFFFF, 'size': 56, 'y': 0.5},
     );
     final segment = Segment(
       id: _uuid.v4(),
@@ -851,9 +1034,22 @@ class _EditorScreenState extends State<EditorScreen> {
       clip: clip,
     );
     _projectService.addSegment(_project!, track.id, segment);
+    _recomputeTimeline(refresh: false);
+    _tempTextSegment = segment;
+    _selectedSegment = segment;
+    _editingTextSegmentId = segment.id;
+    _inlineTextController?.dispose();
+    _inlineTextFocusNode?.dispose();
+    _inlineTextController = TextEditingController(text: '');
+    _inlineTextFocusNode = FocusNode();
+    _textEditingMode = true;
     ProjectHolder.current = _project;
-    setState(() => _selectedSegment = segment);
-    _editText();
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _textEditingMode && _inlineTextFocusNode != null) {
+        FocusScope.of(context).requestFocus(_inlineTextFocusNode);
+      }
+    });
   }
 
   Future<void> _editText() async {
@@ -904,16 +1100,39 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
     final text = controller.text;
-    controller.dispose();
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+      return;
+    }
     final dur = Duration(milliseconds: (seconds * 1000).round());
+    if (props.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+      return;
+    }
     props['text'] = text.isEmpty ? ' ' : text;
     props['size'] = size.round();
     props['y'] = y;
     props['color'] = color;
-    seg.timeRange = TimeRange(start: seg.timeRange.start, duration: dur);
+    if (seg.timeRange.start < Duration.zero) {
+      seg.timeRange = TimeRange(start: Duration.zero, duration: dur);
+    } else {
+      seg.timeRange = TimeRange(start: seg.timeRange.start, duration: dur);
+    }
+    if (!mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+      return;
+    }
     setState(() {});
     ProjectHolder.current = _project;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
   }
 
   /// Superpose les textes actifs à la position de la tête de lecture.
@@ -928,13 +1147,21 @@ class _EditorScreenState extends State<EditorScreen> {
           final end = start + seg.timeRange.duration;
           if (_playheadPosition < start || _playheadPosition >= end) continue;
           final p = seg.clip?.properties ?? const {};
-          final y = ((p['y'] ?? 0.5) as num).toDouble();
+          var y = ((p['y'] ?? 0.5) as num).toDouble();
+          y = y.clamp(0.0, 1.0);
           final size = ((p['size'] ?? 56) as num).toDouble();
-          overlays.add(Align(
-            alignment: Alignment(0, y * 2 - 1),
-            child: LayoutBuilder(builder: (context, c) {
-              final scale = (MediaQuery.of(context).size.height * 0.3) / 720;
-              return Text(
+          final isSelected = !_textEditingMode && _selectedSegment?.id == seg.id;
+          final textWidget = LayoutBuilder(builder: (context, c) {
+            final scale = (MediaQuery.of(context).size.height * 0.3) / 720;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: isSelected
+                  ? BoxDecoration(
+                      border: Border.all(color: Colors.white, width: 1.5),
+                      borderRadius: BorderRadius.circular(4),
+                    )
+                  : null,
+              child: Text(
                 '${p['text'] ?? ''}',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -943,61 +1170,166 @@ class _EditorScreenState extends State<EditorScreen> {
                   color: Color((p['color'] ?? 0xFFFFFFFF) as int),
                   shadows: const [Shadow(blurRadius: 4, color: Colors.black)],
                 ),
+              ),
+            );
+          });
+          Widget textOverlay = LayoutBuilder(
+            builder: (context, constraints) {
+              final renderBox = _previewKey.currentContext?.findRenderObject() as RenderBox?;
+              double top = 0;
+              double height = constraints.maxHeight;
+              double left = 0;
+              double width = constraints.maxWidth;
+              if (renderBox != null && renderBox.hasSize) {
+                final videoRect = renderBox.localToGlobal(Offset.zero);
+                final selfRect = (context.findRenderObject() as RenderBox?)?.localToGlobal(Offset.zero) ?? videoRect;
+                top = videoRect.dy - selfRect.dy;
+                left = videoRect.dx - selfRect.dx;
+                height = renderBox.size.height;
+                width = renderBox.size.width;
+                final controller = _videoController;
+                if (controller != null && controller.value.isInitialized && controller.value.aspectRatio > 0) {
+                  final containerAspect = width / height;
+                  final videoAspect = controller.value.aspectRatio;
+                  if (containerAspect > videoAspect) {
+                    final videoWidth = height * videoAspect;
+                    left += (width - videoWidth) / 2;
+                    width = videoWidth;
+                  } else if (containerAspect < videoAspect) {
+                    final videoHeight = width / videoAspect;
+                    top += (height - videoHeight) / 2;
+                    height = videoHeight;
+                  }
+                }
+              }
+              final yPos = top + y * height;
+              return Stack(
+                children: [
+                  Positioned(
+                    left: left,
+                    top: yPos,
+                    width: width,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: FractionalTranslation(
+                        translation: const Offset(0, -0.5),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (_textEditingMode) return;
+                            setState(() {
+                              _selectedSegment = seg;
+                            });
+                            ProjectHolder.current = _project;
+                          },
+                          onPanStart: isSelected
+                              ? (details) {
+                                  // will use onPanUpdate with global position relative to video rect
+                                }
+                              : null,
+                          onPanUpdate: isSelected
+                              ? (details) {
+                                  final renderBox2 = _previewKey.currentContext?.findRenderObject() as RenderBox?;
+                                  if (renderBox2 == null || !renderBox2.hasSize) return;
+                                  final videoGlobal = renderBox2.localToGlobal(Offset.zero);
+                                  final videoSize = renderBox2.size;
+                                  double vTop = videoGlobal.dy;
+                                  double vWidth = videoSize.width;
+                                  double vHeight = videoSize.height;
+                                  final controller = _videoController;
+                                  if (controller != null && controller.value.isInitialized && controller.value.aspectRatio > 0) {
+                                    final containerAspect = vWidth / vHeight;
+                                    final videoAspect = controller.value.aspectRatio;
+                                    if (containerAspect > videoAspect) {
+                                      final videoWidth = vHeight * videoAspect;
+                                      vWidth = videoWidth;
+                                    } else if (containerAspect < videoAspect) {
+                                      final videoHeight = vWidth / videoAspect;
+                                      vTop += (vHeight - videoHeight) / 2;
+                                      vHeight = videoHeight;
+                                    }
+                                  }
+                                  final globalPos = details.globalPosition;
+                                  var newY = (globalPos.dy - vTop) / vHeight;
+                                  newY = newY.clamp(0.0, 1.0);
+                                  final clip = seg.clip;
+                                  if (clip == null) return;
+                                  clip.properties['y'] = newY;
+                                  if (mounted) setState(() {});
+                                  ProjectHolder.current = _project;
+                                }
+                              : null,
+                          child: textWidget,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
-            }),
-          ));
+            },
+          );
+          overlays.add(textOverlay);
         }
       }
+    }
+    if (_textEditingMode && _inlineTextController != null && _inlineTextFocusNode != null && _selectedSegment?.clip?.type == ClipType.text) {
+      final seg = _selectedSegment!;
+      final p = seg.clip?.properties ?? const {};
+      var y = ((p['y'] ?? 0.5) as num).toDouble();
+      y = y.clamp(0.0, 1.0);
+      overlays.add(Align(
+        alignment: Alignment(0, y * 2 - 1),
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 280),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _inlineTextController,
+                  focusNode: _inlineTextFocusNode,
+                  autofocus: true,
+                  maxLines: 2,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Saisir du texte',
+                    hintStyle: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: _cancelInlineTextEdit,
+                      child: const Text('Annuler', style: TextStyle(color: Colors.white70)),
+                    ),
+                    const SizedBox(width: 4),
+                    FilledButton(
+                      onPressed: _commitInlineTextEdit,
+                      child: const Text('Valider'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
     }
     return Stack(fit: StackFit.expand, children: [base, ...overlays]);
   }
 
   // ───────────────────────── Filtres ─────────────────────────
-
-  List<double> _mul5(List<double> a, List<double> b) {
-    final r = List<double>.filled(25, 0);
-    for (var i = 0; i < 5; i++) {
-      for (var j = 0; j < 5; j++) {
-        var v = 0.0;
-        for (var k = 0; k < 5; k++) {
-          v += a[i * 5 + k] * b[k * 5 + j];
-        }
-        r[i * 5 + j] = v;
-      }
-    }
-    return r;
-  }
-
-  /// Matrice couleur 4x5 (Flutter ColorFilter.matrix) : saturation → sépia → contraste → luminosité.
-  List<double> _filterMatrix(Clip c) {
-    List<double> identity() => [
-          1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1
-        ];
-    final s = 1 + c.saturation;
-    const lr = 0.2126, lg = 0.7152, lb = 0.0722;
-    final sat = identity();
-    sat.setAll(0, [
-      lr * (1 - s) + s, lg * (1 - s), lb * (1 - s), 0, 0,
-      lr * (1 - s), lg * (1 - s) + s, lb * (1 - s), 0, 0,
-      lr * (1 - s), lg * (1 - s), lb * (1 - s) + s, 0, 0,
-    ]);
-    final a = c.sepia.clamp(0.0, 1.0).toDouble();
-    final sep = identity();
-    sep.setAll(0, [
-      1 - a + a * 0.393, a * 0.769, a * 0.189, 0, 0,
-      a * 0.349, 1 - a + a * 0.686, a * 0.168, 0, 0,
-      a * 0.272, a * 0.534, 1 - a + a * 0.131, 0, 0,
-    ]);
-    final k = 1 + c.contrast;
-    final off = (0.5 - 0.5 * k) * 255;
-    final con = identity();
-    con[0] = k; con[6] = k; con[12] = k;
-    con[4] = off; con[9] = off; con[14] = off;
-    final bri = identity();
-    bri[4] = c.brightness * 255; bri[9] = c.brightness * 255; bri[14] = c.brightness * 255;
-    final m = _mul5(bri, _mul5(con, _mul5(sep, sat)));
-    return m.sublist(0, 20);
-  }
 
   Future<void> _editFilters() async {
     final seg = _selectedSegment;
@@ -1132,6 +1464,9 @@ class _EditorScreenState extends State<EditorScreen> {
   // Barre d'actions : défilement horizontal pour éviter le débordement.
   Widget _buildActions() {
     final selected = _selectedSegment;
+    if (_textEditingMode) {
+      return const SizedBox.shrink();
+    }
 
     final track = selected == null
         ? null
@@ -1143,6 +1478,109 @@ class _EditorScreenState extends State<EditorScreen> {
     final index = track == null
         ? -1
         : track.segments.indexWhere((s) => s.id == selected?.id);
+
+    final isTextSelected = _isText(selected);
+    if (isTextSelected && selected?.clip != null) {
+      final textClip = selected!.clip!;
+      final textProps = textClip.properties;
+      return Container(
+        color: Colors.black,
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Désélectionner',
+                    onPressed: () {
+                      setState(() {
+                        _selectedSegment = null;
+                      });
+                    },
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'Texte',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: _editText,
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Modifier'),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Taille', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    SizedBox(
+                      width: 140,
+                      child: Slider(
+                        min: 20,
+                        max: 140,
+                        value: ((textProps['size'] ?? 56) as num).toDouble().clamp(20, 140),
+                        onChanged: (v) {
+                          textProps['size'] = v.round();
+                          ProjectHolder.current = _project;
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Couleur', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ...[
+                      0xFFFFFFFF,
+                      0xFFFFEB3B,
+                      0xFFFF5252,
+                      0xFF40C4FF,
+                      0xFF69F0AE,
+                      0xFF000000,
+                    ].map((c) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: GestureDetector(
+                            onTap: () {
+                              textProps['color'] = c;
+                              ProjectHolder.current = _project;
+                              if (mounted) setState(() {});
+                            },
+                            child: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: Color(c),
+                              child: ((textProps['color'] ?? 0xFFFFFFFF) as int) == c
+                                  ? const Icon(Icons.check, size: 16, color: Colors.grey)
+                                  : null,
+                            ),
+                          ),
+                        )),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Supprimer',
+                      onPressed: () {
+                        _deleteSelected();
+                        setState(() {
+                          _selectedSegment = null;
+                        });
+                      },
+                      icon: const Icon(Icons.delete),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1170,15 +1608,7 @@ class _EditorScreenState extends State<EditorScreen> {
             icon: const Icon(Icons.title, size: 18),
             label: const Text('Texte'),
           ),
-          if (_isText(selected)) ...[
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editText,
-              icon: const Icon(Icons.edit, size: 18),
-              label: const Text('Modifier'),
-            ),
-          ],
-          if (selected != null && !_isText(selected) && selected.clip != null) ...[
+          if (selected != null && !isTextSelected && selected.clip != null) ...[
             const SizedBox(width: 8),
             FilledButton.tonalIcon(
               onPressed: _editSpeedVolume,
@@ -1255,42 +1685,11 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           Expanded(
             flex: 3,
-            child: _previewWithText(Container(
-              width: double.infinity,
-              color: Colors.black,
-              child: controller != null && controller.value.isInitialized
-                  ? Center(
-                child: AspectRatio(
-                  aspectRatio: controller.value.aspectRatio,
-                  child: (_selectedSegment?.clip?.hasFilters ?? false)
-                      ? ColorFiltered(
-                          colorFilter: ColorFilter.matrix(_filterMatrix(_selectedSegment!.clip!)),
-                          child: VideoPlayer(controller),
-                        )
-                      : VideoPlayer(controller),
-                ),
-              )
-                  : const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.play_circle_outline,
-                      size: 64,
-                      color: Colors.white24,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Sélectionne un clip pour le prévisualiser',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
+              child: _previewWithText(
+                controller != null
+                    ? VideoPlayer(controller)
+                    : const SizedBox.expand(),
               ),
-            )),
           ),
           const Divider(height: 1, color: Colors.grey),
           Expanded(

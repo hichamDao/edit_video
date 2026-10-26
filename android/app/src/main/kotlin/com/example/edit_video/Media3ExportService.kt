@@ -84,7 +84,9 @@ class Media3ExportService(
         audioMimeType: String? = null,
         outputHeight: Int = 0,
         bitrate: Int = 0,
-        includeAudio: Boolean = true
+        includeAudio: Boolean = true,
+        width: Int = 0,
+        height: Int = 0
     ) {
         cancelExport()
         this.outputPath = outputPath
@@ -106,7 +108,7 @@ class Media3ExportService(
         val sequences = mutableListOf<EditedMediaItemSequence>()
         if (videoItems.isNotEmpty()) {
             sequences.add(EditedMediaItemSequence(
-                videoItems.map { buildItem(it, !includeAudio, outputHeight) }))
+                videoItems.map { buildItem(it, !includeAudio, outputHeight, width) }))
         }
         if (audioItems.isNotEmpty() && includeAudio) {
             sequences.add(EditedMediaItemSequence(
@@ -240,7 +242,7 @@ class Media3ExportService(
     }
 
     /** Applique le rognage (start/duration), la resolution et l'option audio. */
-    private fun buildItem(item: ClipItem, removeAudio: Boolean, height: Int): EditedMediaItem {
+    private fun buildItem(item: ClipItem, removeAudio: Boolean, height: Int, width: Int = 0): EditedMediaItem {
         val uri = if (item.path.contains("://")) Uri.parse(item.path) else Uri.fromFile(File(item.path))
         val mediaItem = MediaItem.Builder().setUri(uri).apply {
             if (item.durationMs > 0) {
@@ -273,7 +275,45 @@ class Media3ExportService(
         if (item.sepia > 0.0) videoEffects.add(SepiaMatrix(item.sepia.toFloat()))
         if (item.contrast != 0.0) videoEffects.add(Contrast(item.contrast.toFloat()))
         if (item.brightness != 0.0) videoEffects.add(Brightness(item.brightness.toFloat()))
-        if (height > 0) videoEffects.add(Presentation.createForHeight(height))
+        if (height > 0) {
+            try {
+                if (width > 0) {
+                    var added = false
+                    val cls = Presentation::class.java
+                    for (m in cls.methods) {
+                        if (m.name == "createForWidthAndHeight" && java.lang.reflect.Modifier.isStatic(m.modifiers)) {
+                            val params = m.parameterTypes
+                            try {
+                                val effect = when (params.size) {
+                                    2 -> m.invoke(null, width, height) as Effect
+                                    3 -> {
+                                        if (params[2] == Float::class.javaPrimitiveType || params[2] == Float::class.java) {
+                                            m.invoke(null, width, height, 1.0f) as Effect
+                                        } else {
+                                            m.invoke(null, width, height, null) as Effect
+                                        }
+                                    }
+                                    else -> null
+                                }
+                                if (effect != null) {
+                                    videoEffects.add(effect)
+                                    added = true
+                                    break
+                                }
+                            } catch (t: Throwable) {
+                            }
+                        }
+                    }
+                    if (!added) {
+                        videoEffects.add(Presentation.createForHeight(height))
+                    }
+                } else {
+                    videoEffects.add(Presentation.createForHeight(height))
+                }
+            } catch (e: Throwable) {
+                videoEffects.add(Presentation.createForHeight(height))
+            }
+        }
         if (audioProcs.isNotEmpty() || videoEffects.isNotEmpty()) {
             b.setEffects(Effects(audioProcs, videoEffects))
         }
@@ -366,7 +406,8 @@ class Media3ExportService(
     /** Texte affiche uniquement pendant [startMs, startMs+durationMs). */
     private class TimedTextOverlay(private val t: TextItem, frameHeight: Int) : TextOverlay() {
         private val shown = SpannableString(t.text).apply {
-            val px = (t.size * (if (frameHeight > 0) frameHeight else 720) / 720.0).toInt().coerceAtLeast(12)
+            val h = if (frameHeight > 0) frameHeight else 720
+            val px = (t.size * (h.toDouble() / 720.0)).toInt().coerceAtLeast(16)
             setSpan(ForegroundColorSpan(t.color), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             setSpan(AbsoluteSizeSpan(px), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -378,7 +419,7 @@ class Media3ExportService(
         }
 
         override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
-            OverlaySettings.Builder().setBackgroundFrameAnchor(0f, (1.0 - 2.0 * t.y).toFloat()).build()
+            OverlaySettings.Builder().setBackgroundFrameAnchor(0.5f, (t.y * 2.0 - 1.0).toFloat()).build()
     }
 
     private data class ClipItem(

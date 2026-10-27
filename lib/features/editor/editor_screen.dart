@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -1733,30 +1733,8 @@ class _EditorScreenState extends State<EditorScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF101114),
       appBar: AppBar(
-        toolbarHeight: 58,
-        elevation: 0,
-        backgroundColor: const Color(0xFF17181C),
-        titleSpacing: 16,
-        title: const Row(
-          children: [
-            Icon(Icons.movie_edit_outlined, color: Color(0xFFB7F36B), size: 25),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('EDIT VIDEO', style: TextStyle(
-                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                )),
-                SizedBox(height: 2),
-                Text('Studio de montage', style: TextStyle(
-                  color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400,
-                )),
-              ],
-            ),
-          ],
-        ),
+        title: const Text('REA — Éditeur vidéo'),
+        backgroundColor: Colors.black,
         actions: [
           IconButton(
             tooltip: 'Exporter la vidéo',

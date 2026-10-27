@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -588,7 +588,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final isVideoTrack = track.type == TrackType.video;
 
     return SizedBox(
-      height: 64,
+      height: 56,
       child: Container(
         color: Colors.grey.shade900,
         child: Stack(
@@ -603,13 +603,41 @@ class _EditorScreenState extends State<EditorScreen> {
                 color: Colors.grey.shade800,
                 alignment: Alignment.center,
                 padding: const EdgeInsets.all(4),
-                child: Text(
-                  track.name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isVideoTrack
+                          ? Icons.movie_outlined
+                          : track.type == TrackType.text
+                              ? Icons.title_rounded
+                              : Icons.graphic_eq_rounded,
+                      size: 16,
+                      color: isVideoTrack
+                          ? const Color(0xFFB8F64A)
+                          : track.type == TrackType.text
+                              ? const Color(0xFFFFC857)
+                              : const Color(0xFF63C7FF),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      track.name.isEmpty
+                          ? (isVideoTrack
+                              ? 'VIDÉO'
+                              : track.type == TrackType.text
+                                  ? 'TEXTE'
+                                  : 'AUDIO')
+                          : track.name.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -838,7 +866,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: IgnorePointer(
                   child: Container(
                     width: 2,
-                    color: Colors.redAccent,
+                    color: const Color(0xFFFF5A64),
                   ),
                 ),
               ),
@@ -850,80 +878,94 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _buildPlayheadControls() {
     final selected = _selectedSegment;
-
-    if (selected == null) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text(
-          'Sélectionne un clip pour déplacer la tête de lecture et le scinder.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    final start = selected.timeRange.start.inMilliseconds.toDouble();
-    final end = (selected.timeRange.start +
-        selected.timeRange.duration)
-        .inMilliseconds
-        .toDouble();
-
+    final start = selected?.timeRange.start.inMilliseconds.toDouble() ?? 0.0;
+    final end = selected == null
+        ? 1.0
+        : (selected.timeRange.start + selected.timeRange.duration)
+            .inMilliseconds
+            .toDouble();
     final maxValue = end > start ? end : start + 1;
     final currentValue = _playheadPosition.inMilliseconds
         .toDouble()
         .clamp(start, maxValue)
         .toDouble();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 3),
+      decoration: const BoxDecoration(
+        color: Color(0xFF111216),
+        border: Border(top: BorderSide(color: Color(0xFF292A2F))),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.linear_scale,
-                size: 18,
-                color: Colors.redAccent,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF27292E),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _formatTime(_playheadPosition),
+                  style: const TextStyle(
+                    color: Color(0xFFB8F64A),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Tête de lecture',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                  'TÊTE DE LECTURE',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                  ),
                 ),
               ),
-              Text(
-                _formatTime(_playheadPosition),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
+              IconButton(
+                tooltip: 'Scinder au curseur',
+                visualDensity: VisualDensity.compact,
+                onPressed: selected?.clip == null ||
+                        selected!.timeRange.duration <
+                            const Duration(milliseconds: 2)
+                    ? null
+                    : _splitSelected,
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFB8F64A),
+                  foregroundColor: const Color(0xFF11130B),
+                  disabledBackgroundColor: const Color(0xFF292A2F),
+                  disabledForegroundColor: Colors.white24,
                 ),
+                icon: const Icon(Icons.content_cut_rounded, size: 18),
               ),
             ],
           ),
-          Slider(
-            min: start,
-            max: maxValue,
-            value: currentValue,
-            activeColor: Colors.redAccent,
-            onChanged: (value) {
-              setState(() {
-                _playheadPosition =
-                    Duration(milliseconds: value.round());
-              });
-            },
-          ),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: selected.clip == null ||
-                  selected.timeRange.duration <
-                      const Duration(milliseconds: 2)
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              activeTrackColor: const Color(0xFFB8F64A),
+              inactiveTrackColor: const Color(0xFF393B40),
+              thumbColor: const Color(0xFFB8F64A),
+              overlayColor: const Color(0x22B8F64A),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+            ),
+            child: Slider(
+              min: start,
+              max: maxValue,
+              value: currentValue,
+              onChanged: selected == null
                   ? null
-                  : _splitSelected,
-              icon: const Icon(Icons.content_cut),
-              label: const Text('Scinder à la tête de lecture'),
+                  : (value) {
+                      setState(() {
+                        _playheadPosition = Duration(milliseconds: value.round());
+                      });
+                    },
             ),
           ),
         ],
@@ -1648,78 +1690,133 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 8,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
-            onPressed: _importVideo,
-            icon: const Icon(Icons.video_library, size: 18),
-            label: const Text('Importer'),
+    Widget tool({
+      required IconData icon,
+      required String label,
+      required VoidCallback? onPressed,
+      bool primary = false,
+      bool danger = false,
+    }) {
+      final color = primary
+          ? const Color(0xFFB8F64A)
+          : danger
+              ? const Color(0xFFFF6670)
+              : Colors.white70;
+      return SizedBox(
+        width: 66,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: primary
+                        ? const Color(0xFFB8F64A)
+                        : const Color(0xFF25272D),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: primary
+                          ? const Color(0xFFB8F64A)
+                          : Colors.white.withOpacity(0.06),
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 19,
+                    color: primary ? const Color(0xFF11130B) : color,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: onPressed == null ? Colors.white24 : color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addEmptySegment,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Clip vide'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addText,
-            icon: const Icon(Icons.title, size: 18),
-            label: const Text('Texte'),
-          ),
-          if (selected != null && !isTextSelected && selected.clip != null) ...[
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editSpeedVolume,
-              icon: const Icon(Icons.speed, size: 18),
-              label: const Text('Vitesse/Volume'),
+        ),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFF111216),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            tool(
+              icon: Icons.video_library_outlined,
+              label: 'Importer',
+              onPressed: _importVideo,
+              primary: true,
             ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editFilters,
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Filtres'),
+            tool(
+              icon: Icons.add_box_outlined,
+              label: 'Clip vide',
+              onPressed: _addEmptySegment,
             ),
+            tool(
+              icon: Icons.title_rounded,
+              label: 'Texte',
+              onPressed: _addText,
+            ),
+            if (selected != null && !isTextSelected && selected.clip != null)
+              tool(
+                icon: Icons.speed_rounded,
+                label: 'Vitesse',
+                onPressed: _editSpeedVolume,
+              ),
+            if (selected != null && !isTextSelected && selected.clip != null)
+              tool(
+                icon: Icons.auto_awesome_outlined,
+                label: 'Filtres',
+                onPressed: _editFilters,
+              ),
+            if (selected != null)
+              tool(
+                icon: Icons.delete_outline_rounded,
+                label: 'Supprimer',
+                onPressed: _deleteSelected,
+                danger: true,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.arrow_back_rounded,
+                label: 'À gauche',
+                onPressed: index > 0
+                    ? () => _moveSegment(track, selected, -1)
+                    : null,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.arrow_forward_rounded,
+                label: 'À droite',
+                onPressed: index >= 0 && index < track.segments.length - 1
+                    ? () => _moveSegment(track, selected, 1)
+                    : null,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.content_cut_rounded,
+                label: 'Rogner',
+                onPressed: selected.clip != null ? _trimSelected : null,
+              ),
           ],
-          if (selected != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Supprimer',
-              onPressed: _deleteSelected,
-              icon: const Icon(Icons.delete),
-            ),
-          ],
-          if (selected != null && track != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la gauche',
-              onPressed: index > 0
-                  ? () => _moveSegment(track, selected, -1)
-                  : null,
-              icon: const Icon(Icons.arrow_back),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la droite',
-              onPressed: index >= 0 && index < track.segments.length - 1
-                  ? () => _moveSegment(track, selected, 1)
-                  : null,
-              icon: const Icon(Icons.arrow_forward),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: selected.clip != null ? _trimSelected : null,
-              icon: const Icon(Icons.content_cut, size: 18),
-              label: const Text('Rogner'),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -1729,128 +1826,235 @@ class _EditorScreenState extends State<EditorScreen> {
     final project = _project;
     final controller = _videoController;
     final timelineWidth = _timelineWidth();
+    final selected = _selectedSegment;
+    final isPlaying = controller?.value.isPlaying ?? false;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF101114),
+      backgroundColor: const Color(0xFF08090B),
       appBar: AppBar(
-        toolbarHeight: 58,
+        backgroundColor: const Color(0xFF111216),
         elevation: 0,
-        backgroundColor: const Color(0xFF17181C),
-        titleSpacing: 16,
-        title: const Row(
+        leading: IconButton(
+          tooltip: 'Retour',
+          icon: const Icon(Icons.arrow_back_ios_new, size: 19),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.movie_creation_outlined, color: Color(0xFFB7F36B), size: 25),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('EDIT VIDEO', style: TextStyle(
-                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                )),
-                SizedBox(height: 2),
-                Text('Studio de montage', style: TextStyle(
-                  color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400,
-                )),
-              ],
+            const Text('Modifier le projet',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              project?.name ?? 'Mon projet',
+              style: const TextStyle(fontSize: 11, color: Colors.white54),
             ),
           ],
         ),
         actions: [
           IconButton(
-            tooltip: 'Exporter la vidéo',
-            icon: const Icon(Icons.file_upload_outlined, color: Color(0xFFB7F36B)),
-            onPressed: () => Navigator.pushNamed(context, '/export'),
+            tooltip: 'Importer une vidéo',
+            icon: const Icon(Icons.add_circle_outline, color: Color(0xFFB8F64A)),
+            onPressed: _importVideo,
           ),
-          const SizedBox(width: 6),
+          Padding(
+            padding: const EdgeInsets.only(right: 10, top: 9, bottom: 9),
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB8F64A),
+                foregroundColor: const Color(0xFF101108),
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pushNamed(context, '/export'),
+              child: const Text('Exporter', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            flex: 5,
+            flex: 4,
             child: Container(
-              color: const Color(0xFF0B0C0E),
+              width: double.infinity,
+              color: const Color(0xFF08090B),
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 9, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: Row(
                       children: [
-                        const Icon(Icons.play_circle_outline, size: 17, color: Color(0xFFB7F36B)),
+                        const Icon(Icons.circle, size: 7, color: Color(0xFFB8F64A)),
                         const SizedBox(width: 7),
-                        const Text('APERÇU', style: TextStyle(
-                          color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800,
-                          letterSpacing: 1.3,
-                        )),
+                        const Text('APERÇU',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.5,
+                            )),
                         const Spacer(),
                         Text(
                           _formatTime(_playheadPosition),
                           style: const TextStyle(
-                            color: Color(0xFFB7F36B), fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
                   ),
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: ColoredBox(
-                          color: const Color(0xFF000000),
-                          child: _previewWithText(
-                            controller != null
-                                ? _filteredVideo(controller)
-                                : const SizedBox.expand(),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+                        child: AspectRatio(
+                          aspectRatio: controller != null &&
+                                  controller.value.isInitialized &&
+                                  controller.value.aspectRatio > 0
+                              ? controller.value.aspectRatio
+                              : 9 / 16,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: ColoredBox(
+                              color: Colors.black,
+                              child: _previewWithText(
+                                controller != null && controller.value.isInitialized
+                                    ? _filteredVideo(controller)
+                                    : const Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.movie_outlined,
+                                                color: Colors.white24, size: 42),
+                                            SizedBox(height: 10),
+                                            Text('Importez une vidéo pour commencer',
+                                                style: TextStyle(
+                                                    color: Colors.white38, fontSize: 12)),
+                                          ],
+                                        ),
+                                      ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          tooltip: 'Revenir au début du clip',
+                          onPressed: selected == null
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _playheadPosition = selected.timeRange.start;
+                                  });
+                                  final c = _videoController;
+                                  if (c != null && c.value.isInitialized) {
+                                    c.seekTo(selected.clip?.trimStart ?? Duration.zero);
+                                  }
+                                },
+                          icon: const Icon(Icons.skip_previous_rounded, color: Colors.white70),
+                        ),
+                        const SizedBox(width: 12),
+                        Material(
+                          color: const Color(0xFFB8F64A),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: isPlaying ? 'Pause' : 'Lire',
+                            onPressed: () async {
+                              final c = _videoController;
+                              if (c == null || !c.value.isInitialized) {
+                                if (selected != null) await _playSegment(selected);
+                                return;
+                              }
+                              if (c.value.isPlaying) {
+                                await c.pause();
+                              } else {
+                                await c.play();
+                              }
+                              if (mounted) setState(() {});
+                            },
+                            icon: Icon(
+                              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                              color: const Color(0xFF11130B),
+                              size: 30,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          tooltip: 'Arrêter',
+                          onPressed: () async {
+                            final c = _videoController;
+                            if (c != null && c.value.isInitialized) {
+                              await c.pause();
+                              await c.seekTo(selected?.clip?.trimStart ?? Duration.zero);
+                            }
+                            if (mounted) setState(() {});
+                          },
+                          icon: const Icon(Icons.stop_rounded, color: Colors.white70),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          const Divider(height: 1, thickness: 1, color: Color(0xFF2A2B30)),
+          Container(height: 1, color: const Color(0xFF292A2F)),
           Expanded(
-            flex: 4,
-            child: project == null
-                ? const SizedBox.shrink()
-                : Container(
-                    color: const Color(0xFF151619),
-                    child: Column(
+            flex: 6,
+            child: Container(
+              color: const Color(0xFF111216),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 8, 3),
+                    child: Row(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.view_timeline_outlined,
-                                  color: Color(0xFFB7F36B), size: 18),
-                              const SizedBox(width: 8),
-                              const Text('TIMELINE', style: TextStyle(
-                                color: Colors.white, fontSize: 11,
-                                fontWeight: FontWeight.w800, letterSpacing: 1.2,
-                              )),
-                              const Spacer(),
-                              Text(
-                                _formatTime(project.tracks
-                                    .where((track) => track.type == TrackType.video)
-                                    .expand((track) => track.segments)
-                                    .fold<Duration>(
-                                      Duration.zero,
-                                      (total, segment) => total + _segmentDuration(segment),
-                                    )),
-                                style: const TextStyle(color: Colors.white54, fontSize: 10),
-                              ),
-                            ],
+                        const Text('Timeline',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF292B2F),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            '${project?.tracks.fold<int>(0, (n, t) => n + t.segments.length) ?? 0} clips',
+                            style: const TextStyle(color: Colors.white60, fontSize: 10),
                           ),
                         ),
-                        Expanded(
-                          child: SingleChildScrollView(
+                        const Spacer(),
+                        Text(
+                          _formatShort(project == null
+                              ? Duration.zero
+                              : project.tracks
+                                  .where((t) => t.type == TrackType.video)
+                                  .expand((t) => t.segments)
+                                  .fold<Duration>(
+                                    Duration.zero,
+                                    (total, segment) => total + _segmentDuration(segment),
+                                  )),
+                          style: const TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: project == null
+                        ? const SizedBox.shrink()
+                        : SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: SizedBox(
                               width: timelineWidth.clamp(400.0, 1000000.0),
@@ -1870,17 +2074,17 @@ class _EditorScreenState extends State<EditorScreen> {
                               ),
                             ),
                           ),
-                        ),
-                        _buildPlayheadControls(),
-                        const Divider(height: 1, color: Color(0xFF2A2B30)),
-                        SafeArea(
-                          top: false,
-                          minimum: const EdgeInsets.only(bottom: 5),
-                          child: _buildActions(),
-                        ),
-                      ],
-                    ),
                   ),
+                  _buildPlayheadControls(),
+                  Container(height: 1, color: const Color(0xFF292A2F)),
+                  SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.only(bottom: 4),
+                    child: _buildActions(),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

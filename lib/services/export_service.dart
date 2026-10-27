@@ -292,6 +292,7 @@ class ExportService {
           'color': p['color'] ?? 0xFFFFFFFF,
           'size': p['size'] ?? 56,
           'y': p['y'] ?? 0.5,
+          'x': p['x'] ?? 0.5,
         });
       }
     }

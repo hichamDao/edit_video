@@ -686,13 +686,22 @@ class _EditorScreenState extends State<EditorScreen> {
                               if (_textEditingMode) return;
                               _selectSegment(segment);
                             },
-                            onPanUpdate: isTextSegment
+                            // Texte : glisser horizontalement change son temps de début.
+                            onHorizontalDragUpdate: isTextSegment
                                 ? (details) {
                                     if (_textEditingMode) return;
+                                    final deltaMs =
+                                        (details.delta.dx / _pixelsPerSecond * 1000).round();
+                                    final newStart = Duration(
+                                        milliseconds: (segment.timeRange.start.inMilliseconds + deltaMs)
+                                            .clamp(0, 1 << 30));
                                     setState(() {
                                       _selectedSegment = segment;
+                                      segment.timeRange = TimeRange(
+                                          start: newStart, duration: segment.timeRange.duration);
+                                      _playheadPosition = newStart;
                                     });
-                                    _moveSegment(track, segment, details.delta.dx > 0 ? 1 : -1);
+                                    ProjectHolder.current = _project;
                                   }
                                 : null,
                             child: Container(
@@ -1139,6 +1148,30 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   /// Superpose les textes actifs à la position de la tête de lecture.
+  /// Rectangle (coordonnées écran) occupé réellement par la vidéo dans l'aperçu.
+  Rect? _videoGlobalRect() {
+    final rb = _previewKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb == null || !rb.hasSize) return null;
+    final origin = rb.localToGlobal(Offset.zero);
+    var left = origin.dx, top = origin.dy;
+    var w = rb.size.width, h = rb.size.height;
+    final c = _videoController;
+    if (c != null && c.value.isInitialized && c.value.aspectRatio > 0 && h > 0) {
+      final containerAspect = w / h;
+      final videoAspect = c.value.aspectRatio;
+      if (containerAspect > videoAspect) {
+        final vw = h * videoAspect;
+        left += (w - vw) / 2;
+        w = vw;
+      } else if (containerAspect < videoAspect) {
+        final vh = w / videoAspect;
+        top += (h - vh) / 2;
+        h = vh;
+      }
+    }
+    return Rect.fromLTWH(left, top, w, h);
+  }
+
   Widget _previewWithText(Widget base) {
     final project = _project;
     final overlays = <Widget>[];
@@ -1152,6 +1185,7 @@ class _EditorScreenState extends State<EditorScreen> {
           final p = seg.clip?.properties ?? const {};
           var y = ((p['y'] ?? 0.5) as num).toDouble();
           y = y.clamp(0.0, 1.0);
+          final x = ((p['x'] ?? 0.5) as num).toDouble().clamp(0.0, 1.0).toDouble();
           final size = ((p['size'] ?? 56) as num).toDouble();
           final isSelected = !_textEditingMode && _selectedSegment?.id == seg.id;
           final textWidget = LayoutBuilder(builder: (context, c) {
@@ -1209,13 +1243,13 @@ class _EditorScreenState extends State<EditorScreen> {
               return Stack(
                 children: [
                   Positioned(
-                    left: left,
+                    // Le centre du texte est placé en (x, y) : même repère que l'export.
+                    left: left + x * width,
                     top: yPos,
-                    width: width,
                     child: Align(
-                      alignment: Alignment.topCenter,
+                      alignment: Alignment.topLeft,
                       child: FractionalTranslation(
-                        translation: const Offset(0, -0.5),
+                        translation: const Offset(-0.5, -0.5),
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () {
@@ -1225,43 +1259,19 @@ class _EditorScreenState extends State<EditorScreen> {
                             });
                             ProjectHolder.current = _project;
                           },
-                          onPanStart: isSelected
-                              ? (details) {
-                                  // will use onPanUpdate with global position relative to video rect
-                                }
-                              : null,
-                          onPanUpdate: isSelected
-                              ? (details) {
-                                  final renderBox2 = _previewKey.currentContext?.findRenderObject() as RenderBox?;
-                                  if (renderBox2 == null || !renderBox2.hasSize) return;
-                                  final videoGlobal = renderBox2.localToGlobal(Offset.zero);
-                                  final videoSize = renderBox2.size;
-                                  double vTop = videoGlobal.dy;
-                                  double vWidth = videoSize.width;
-                                  double vHeight = videoSize.height;
-                                  final controller = _videoController;
-                                  if (controller != null && controller.value.isInitialized && controller.value.aspectRatio > 0) {
-                                    final containerAspect = vWidth / vHeight;
-                                    final videoAspect = controller.value.aspectRatio;
-                                    if (containerAspect > videoAspect) {
-                                      final videoWidth = vHeight * videoAspect;
-                                      vWidth = videoWidth;
-                                    } else if (containerAspect < videoAspect) {
-                                      final videoHeight = vWidth / videoAspect;
-                                      vTop += (vHeight - videoHeight) / 2;
-                                      vHeight = videoHeight;
-                                    }
-                                  }
-                                  final globalPos = details.globalPosition;
-                                  var newY = (globalPos.dy - vTop) / vHeight;
-                                  newY = newY.clamp(0.0, 1.0);
-                                  final clip = seg.clip;
-                                  if (clip == null) return;
-                                  clip.properties['y'] = newY;
-                                  if (mounted) setState(() {});
-                                  ProjectHolder.current = _project;
-                                }
-                              : null,
+                          onPanUpdate: (details) {
+                            if (_textEditingMode) return;
+                            final r = _videoGlobalRect();
+                            final clip = seg.clip;
+                            if (r == null || clip == null || r.width <= 0 || r.height <= 0) return;
+                            final nx = ((details.globalPosition.dx - r.left) / r.width).clamp(0.0, 1.0);
+                            final ny = ((details.globalPosition.dy - r.top) / r.height).clamp(0.0, 1.0);
+                            clip.properties['x'] = nx;
+                            clip.properties['y'] = ny;
+                            if (!mounted) return;
+                            setState(() => _selectedSegment = seg);
+                            ProjectHolder.current = _project;
+                          },
                           child: textWidget,
                         ),
                       ),

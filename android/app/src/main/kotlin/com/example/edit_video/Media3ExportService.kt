@@ -231,7 +231,7 @@ class Media3ExportService(
                 val o = ta.getJSONObject(i)
                 texts.add(TextItem(
                     o.optString("text", ""), o.optLong("startMs", 0L), o.optLong("durationMs", 0L),
-                    o.optLong("color", 0xFFFFFFFFL).toInt(), o.optDouble("size", 56.0), o.optDouble("y", 0.5)
+                    o.optLong("color", 0xFFFFFFFFL).toInt(), o.optDouble("size", 56.0), o.optDouble("y", 0.5), o.optDouble("x", 0.5)
                 ))
             }
         }
@@ -415,7 +415,7 @@ class Media3ExportService(
 
     private data class TextItem(
         val text: String, val startMs: Long, val durationMs: Long,
-        val color: Int, val size: Double, val y: Double
+        val color: Int, val size: Double, val y: Double, val x: Double = 0.5
     )
 
     /** Texte affiche uniquement pendant [startMs, startMs+durationMs). */
@@ -434,7 +434,7 @@ class Media3ExportService(
         }
 
         override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
-            OverlaySettings.Builder().setBackgroundFrameAnchor(0.5f, (t.y * 2.0 - 1.0).toFloat()).build()
+            OverlaySettings.Builder().setBackgroundFrameAnchor((t.x * 2.0 - 1.0).toFloat(), (t.y * 2.0 - 1.0).toFloat()).build()
     }
 
     private data class ClipItem(

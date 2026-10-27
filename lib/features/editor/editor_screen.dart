@@ -1802,7 +1802,6 @@ class _EditorScreenState extends State<EditorScreen> {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
-                            fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],

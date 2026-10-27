@@ -891,7 +891,7 @@ class _EditorScreenState extends State<EditorScreen> {
         .toDouble();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 5, 12, 9),
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 3),
       decoration: const BoxDecoration(
         color: Color(0xFF111216),
         border: Border(top: BorderSide(color: Color(0xFF292A2F))),
@@ -911,7 +911,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   _formatTime(_playheadPosition),
                   style: const TextStyle(
                     color: Color(0xFFB8F64A),
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -948,12 +948,12 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
+              trackHeight: 2,
               activeTrackColor: const Color(0xFFB8F64A),
               inactiveTrackColor: const Color(0xFF393B40),
               thumbColor: const Color(0xFFB8F64A),
               overlayColor: const Color(0x22B8F64A),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
             ),
             child: Slider(
               min: start,
@@ -1703,7 +1703,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ? const Color(0xFFFF6670)
               : Colors.white70;
       return SizedBox(
-        width: 62,
+        width: 66,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onPressed,
@@ -1713,8 +1713,8 @@ class _EditorScreenState extends State<EditorScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 38,
-                  height: 34,
+                  width: 42,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: primary
                         ? const Color(0xFFB8F64A)
@@ -1739,7 +1739,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: onPressed == null ? Colors.white24 : color,
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1752,7 +1752,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     return Container(
       color: const Color(0xFF111216),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -2015,13 +2015,13 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
+                    padding: const EdgeInsets.fromLTRB(14, 6, 8, 3),
                     child: Row(
                       children: [
                         const Text('Timeline',
                             style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 14,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w800)),
                         const SizedBox(width: 8),
                         Container(
@@ -2047,12 +2047,6 @@ class _EditorScreenState extends State<EditorScreen> {
                                     (total, segment) => total + _segmentDuration(segment),
                                   )),
                           style: const TextStyle(color: Colors.white54, fontSize: 11),
-                        ),
-                        IconButton(
-                          tooltip: 'Ajouter une vidéo',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: _importVideo,
-                          icon: const Icon(Icons.add, color: Color(0xFFB8F64A), size: 21),
                         ),
                       ],
                     ),

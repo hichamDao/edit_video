@@ -838,7 +838,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: IgnorePointer(
                   child: Container(
                     width: 2,
-                    color: Colors.redAccent,
+                    color: const Color(0xFFFF5A64),
                   ),
                 ),
               ),
@@ -850,80 +850,94 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _buildPlayheadControls() {
     final selected = _selectedSegment;
-
-    if (selected == null) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text(
-          'Sélectionne un clip pour déplacer la tête de lecture et le scinder.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    final start = selected.timeRange.start.inMilliseconds.toDouble();
-    final end = (selected.timeRange.start +
-        selected.timeRange.duration)
-        .inMilliseconds
-        .toDouble();
-
+    final start = selected?.timeRange.start.inMilliseconds.toDouble() ?? 0.0;
+    final end = selected == null
+        ? 1.0
+        : (selected.timeRange.start + selected.timeRange.duration)
+            .inMilliseconds
+            .toDouble();
     final maxValue = end > start ? end : start + 1;
     final currentValue = _playheadPosition.inMilliseconds
         .toDouble()
         .clamp(start, maxValue)
         .toDouble();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 5, 12, 9),
+      decoration: const BoxDecoration(
+        color: Color(0xFF111216),
+        border: Border(top: BorderSide(color: Color(0xFF292A2F))),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.linear_scale,
-                size: 18,
-                color: Colors.redAccent,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF27292E),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _formatTime(_playheadPosition),
+                  style: const TextStyle(
+                    color: Color(0xFFB8F64A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Tête de lecture',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                  'TÊTE DE LECTURE',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                  ),
                 ),
               ),
-              Text(
-                _formatTime(_playheadPosition),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
+              IconButton(
+                tooltip: 'Scinder au curseur',
+                visualDensity: VisualDensity.compact,
+                onPressed: selected?.clip == null ||
+                        selected!.timeRange.duration <
+                            const Duration(milliseconds: 2)
+                    ? null
+                    : _splitSelected,
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFB8F64A),
+                  foregroundColor: const Color(0xFF11130B),
+                  disabledBackgroundColor: const Color(0xFF292A2F),
+                  disabledForegroundColor: Colors.white24,
                 ),
+                icon: const Icon(Icons.content_cut_rounded, size: 18),
               ),
             ],
           ),
-          Slider(
-            min: start,
-            max: maxValue,
-            value: currentValue,
-            activeColor: Colors.redAccent,
-            onChanged: (value) {
-              setState(() {
-                _playheadPosition =
-                    Duration(milliseconds: value.round());
-              });
-            },
-          ),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: selected.clip == null ||
-                  selected.timeRange.duration <
-                      const Duration(milliseconds: 2)
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              activeTrackColor: const Color(0xFFB8F64A),
+              inactiveTrackColor: const Color(0xFF393B40),
+              thumbColor: const Color(0xFFB8F64A),
+              overlayColor: const Color(0x22B8F64A),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            ),
+            child: Slider(
+              min: start,
+              max: maxValue,
+              value: currentValue,
+              onChanged: selected == null
                   ? null
-                  : _splitSelected,
-              icon: const Icon(Icons.content_cut),
-              label: const Text('Scinder à la tête de lecture'),
+                  : (value) {
+                      setState(() {
+                        _playheadPosition = Duration(milliseconds: value.round());
+                      });
+                    },
             ),
           ),
         ],

@@ -848,83 +848,146 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  static const Color _bg = Color(0xFF121212);
+  static const Color _accent = Color(0xFF38E1D4);
+
+  Duration _totalDuration() {
+    final project = _project;
+    if (project == null) return Duration.zero;
+    return project.tracks
+        .where((t) => t.type == TrackType.video)
+        .expand((t) => t.segments)
+        .fold<Duration>(Duration.zero, (sum, seg) => sum + _segmentDuration(seg));
+  }
+
+  void _togglePlay() {
+    final c = _videoController;
+    if (c == null || !c.value.isInitialized) {
+      final t = _videoTrack();
+      if (t != null && t.segments.isNotEmpty) _selectSegment(t.segments.first);
+      return;
+    }
+    if (c.value.isPlaying) {
+      c.pause();
+    } else {
+      c.play();
+    }
+    setState(() {});
+  }
+
+  /// Ligne sous l'aperçu : 00:03/00:50 · tête de lecture · lecture · couper.
   Widget _buildPlayheadControls() {
     final selected = _selectedSegment;
-
-    if (selected == null) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text(
-          'Sélectionne un clip pour déplacer la tête de lecture et le scinder.',
-          style: TextStyle(color: Colors.white70, fontSize: 12),
-          textAlign: TextAlign.center,
+    final playing = _videoController?.value.isPlaying ?? false;
+    Widget slider = const Spacer();
+    if (selected != null) {
+      final start = selected.timeRange.start.inMilliseconds.toDouble();
+      final end = (selected.timeRange.start + selected.timeRange.duration)
+          .inMilliseconds
+          .toDouble();
+      final maxValue = end > start ? end : start + 1;
+      final value = _playheadPosition.inMilliseconds.toDouble().clamp(start, maxValue).toDouble();
+      slider = Expanded(
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 2,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: SliderComponentShape.noOverlay,
+            activeTrackColor: _accent,
+            inactiveTrackColor: Colors.white24,
+            thumbColor: Colors.white,
+          ),
+          child: Slider(
+            min: start,
+            max: maxValue,
+            value: value,
+            onChanged: (v) => setState(() => _playheadPosition = Duration(milliseconds: v.round())),
+          ),
         ),
       );
     }
-
-    final start = selected.timeRange.start.inMilliseconds.toDouble();
-    final end = (selected.timeRange.start +
-        selected.timeRange.duration)
-        .inMilliseconds
-        .toDouble();
-
-    final maxValue = end > start ? end : start + 1;
-    final currentValue = _playheadPosition.inMilliseconds
-        .toDouble()
-        .clamp(start, maxValue)
-        .toDouble();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    final canSplit = selected?.clip != null &&
+        selected!.timeRange.duration >= const Duration(milliseconds: 2);
+    return Container(
+      color: _bg,
+      padding: const EdgeInsets.fromLTRB(16, 2, 6, 2),
+      child: Row(
         children: [
-          Row(
+          Text(
+            '${_formatTime(_playheadPosition)}/${_formatTime(_totalDuration())}',
+            style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+          slider,
+          IconButton(
+            tooltip: playing ? 'Pause' : 'Lecture',
+            onPressed: _togglePlay,
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow_outlined, color: Colors.white, size: 30),
+          ),
+          IconButton(
+            tooltip: 'Scinder à la tête de lecture',
+            onPressed: canSplit ? _splitSelected : null,
+            icon: Icon(Icons.content_cut, size: 22, color: canSplit ? Colors.white : Colors.white24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolButton(IconData icon, String label, VoidCallback? onTap) {
+    final on = onTap != null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 68,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.linear_scale,
-                size: 18,
-                color: Colors.redAccent,
-              ),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text(
-                  'Tête de lecture',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ),
-              Text(
-                _formatTime(_playheadPosition),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                ),
-              ),
+              Icon(icon, size: 23, color: on ? Colors.white : Colors.white24),
+              const SizedBox(height: 4),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10, color: on ? Colors.white70 : Colors.white24)),
             ],
           ),
-          Slider(
-            min: start,
-            max: maxValue,
-            value: currentValue,
-            activeColor: Colors.redAccent,
-            onChanged: (value) {
-              setState(() {
-                _playheadPosition =
-                    Duration(milliseconds: value.round());
-              });
-            },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      color: _bg,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      height: 48,
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Fermer',
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.maybePop(context),
           ),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: selected.clip == null ||
-                  selected.timeRange.duration <
-                      const Duration(milliseconds: 2)
-                  ? null
-                  : _splitSelected,
-              icon: const Icon(Icons.content_cut),
-              label: const Text('Scinder à la tête de lecture'),
+          const Spacer(),
+          InkWell(
+            onTap: () => Navigator.pushNamed(context, '/export'),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: const Color(0xFF2A2A2C), borderRadius: BorderRadius.circular(6)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('1080P', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+              ]),
             ),
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Exporter la vidéo',
+            icon: const Icon(Icons.file_upload_outlined, color: Colors.white),
+            onPressed: () => Navigator.pushNamed(context, '/export'),
           ),
         ],
       ),
@@ -1648,77 +1711,49 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 8,
-      ),
+    final hasClip = selected != null && !isTextSelected && selected.clip != null;
+    final items = <Widget>[
+      _toolButton(Icons.video_library_outlined, 'Importer', _importVideo),
+      _toolButton(Icons.title, 'Texte', _addText),
+      _toolButton(Icons.add_box_outlined, 'Clip vide', _addEmptySegment),
+      if (hasClip) ...[
+        _toolButton(Icons.content_cut, 'Couper',
+            selected.timeRange.duration >= const Duration(milliseconds: 2) ? _splitSelected : null),
+        _toolButton(Icons.speed, 'Vitesse', _editSpeedVolume),
+        _toolButton(Icons.auto_awesome, 'Filtres', _editFilters),
+        _toolButton(Icons.crop, 'Rogner', _trimSelected),
+      ],
+      if (selected != null) ...[
+        if (track != null) ...[
+          _toolButton(Icons.arrow_back, 'Reculer', index > 0 ? () => _moveSegment(track, selected, -1) : null),
+          _toolButton(Icons.arrow_forward, 'Avancer',
+              index >= 0 && index < track.segments.length - 1 ? () => _moveSegment(track, selected, 1) : null),
+        ],
+        _toolButton(Icons.delete_outline, 'Supprimer', _deleteSelected),
+      ],
+    ];
+    return Container(
+      height: 66,
+      color: const Color(0xFF181818),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          FilledButton.icon(
-            onPressed: _importVideo,
-            icon: const Icon(Icons.video_library, size: 18),
-            label: const Text('Importer'),
+          if (selected != null)
+            InkWell(
+              onTap: () => setState(() => _selectedSegment = null),
+              child: Container(
+                width: 40,
+                height: double.infinity,
+                color: const Color(0xFF2A2A2C),
+                child: const Icon(Icons.chevron_left, color: Colors.white),
+              ),
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: items),
+            ),
           ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addEmptySegment,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Clip vide'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addText,
-            icon: const Icon(Icons.title, size: 18),
-            label: const Text('Texte'),
-          ),
-          if (selected != null && !isTextSelected && selected.clip != null) ...[
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editSpeedVolume,
-              icon: const Icon(Icons.speed, size: 18),
-              label: const Text('Vitesse/Volume'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editFilters,
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Filtres'),
-            ),
-          ],
-          if (selected != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Supprimer',
-              onPressed: _deleteSelected,
-              icon: const Icon(Icons.delete),
-            ),
-          ],
-          if (selected != null && track != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la gauche',
-              onPressed: index > 0
-                  ? () => _moveSegment(track, selected, -1)
-                  : null,
-              icon: const Icon(Icons.arrow_back),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la droite',
-              onPressed: index >= 0 && index < track.segments.length - 1
-                  ? () => _moveSegment(track, selected, 1)
-                  : null,
-              icon: const Icon(Icons.arrow_forward),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: selected.clip != null ? _trimSelected : null,
-              icon: const Icon(Icons.content_cut, size: 18),
-              label: const Text('Rogner'),
-            ),
-          ],
         ],
       ),
     );
@@ -1731,158 +1766,83 @@ class _EditorScreenState extends State<EditorScreen> {
     final timelineWidth = _timelineWidth();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF101114),
-      appBar: AppBar(
-        toolbarHeight: 58,
-        elevation: 0,
-        backgroundColor: const Color(0xFF17181C),
-        titleSpacing: 16,
-        title: const Row(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Column(
           children: [
-            Icon(Icons.movie_creation_outlined, color: Color(0xFFB7F36B), size: 25),
-            SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('EDIT VIDEO', style: TextStyle(
-                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                )),
-                SizedBox(height: 2),
-                Text('Studio de montage', style: TextStyle(
-                  color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400,
-                )),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Exporter la vidéo',
-            icon: const Icon(Icons.file_upload_outlined, color: Color(0xFFB7F36B)),
-            onPressed: () => Navigator.pushNamed(context, '/export'),
-          ),
-          const SizedBox(width: 6),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 5,
-            child: Container(
-              color: const Color(0xFF0B0C0E),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 9, 16, 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.play_circle_outline, size: 17, color: Color(0xFFB7F36B)),
-                        const SizedBox(width: 7),
-                        const Text('APERÇU', style: TextStyle(
-                          color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800,
-                          letterSpacing: 1.3,
-                        )),
-                        const Spacer(),
-                        Text(
-                          _formatTime(_playheadPosition),
-                          style: const TextStyle(
-                            color: Color(0xFFB7F36B), fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+            _buildTopBar(),
+            // ── Aperçu ──
+            Expanded(
+              flex: 5,
+              child: Container(
+                color: _bg,
+                padding: const EdgeInsets.fromLTRB(40, 4, 40, 6),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: ColoredBox(
+                    color: Colors.black,
+                    child: _previewWithText(
+                      controller != null ? _filteredVideo(controller) : const SizedBox.expand(),
                     ),
                   ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: ColoredBox(
-                          color: const Color(0xFF000000),
-                          child: _previewWithText(
-                            controller != null
-                                ? _filteredVideo(controller)
-                                : const SizedBox.expand(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1, thickness: 1, color: Color(0xFF2A2B30)),
-          Expanded(
-            flex: 4,
-            child: project == null
-                ? const SizedBox.shrink()
-                : Container(
-                    color: const Color(0xFF151619),
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.view_timeline_outlined,
-                                  color: Color(0xFFB7F36B), size: 18),
-                              const SizedBox(width: 8),
-                              const Text('TIMELINE', style: TextStyle(
-                                color: Colors.white, fontSize: 11,
-                                fontWeight: FontWeight.w800, letterSpacing: 1.2,
-                              )),
-                              const Spacer(),
-                              Text(
-                                _formatTime(project.tracks
-                                    .where((track) => track.type == TrackType.video)
-                                    .expand((track) => track.segments)
-                                    .fold<Duration>(
-                                      Duration.zero,
-                                      (total, segment) => total + _segmentDuration(segment),
-                                    )),
-                                style: const TextStyle(color: Colors.white54, fontSize: 10),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: SingleChildScrollView(
+            _buildPlayheadControls(),
+            const Divider(height: 1, thickness: 1, color: Color(0xFF262628)),
+            // ── Timeline ──
+            Expanded(
+              flex: 4,
+              child: project == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      color: _bg,
+                      child: Stack(
+                        children: [
+                          SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: SizedBox(
-                              width: timelineWidth.clamp(400.0, 1000000.0),
+                              width: timelineWidth.clamp(400.0, 1000000.0) + 56,
                               child: Column(
                                 children: [
                                   _buildTimelineRuler(timelineWidth),
                                   Expanded(
                                     child: ListView.builder(
                                       itemCount: project.tracks.length,
-                                      itemBuilder: (context, index) => _buildTrack(
-                                        project.tracks[index],
-                                        timelineWidth,
-                                      ),
+                                      itemBuilder: (context, index) =>
+                                          _buildTrack(project.tracks[index], timelineWidth),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                        ),
-                        _buildPlayheadControls(),
-                        const Divider(height: 1, color: Color(0xFF2A2B30)),
-                        SafeArea(
-                          top: false,
-                          minimum: const EdgeInsets.only(bottom: 5),
-                          child: _buildActions(),
-                        ),
-                      ],
+                          // Bouton « + » : ajouter une vidéo (comme dans la maquette)
+                          Positioned(
+                            right: 8,
+                            top: 34,
+                            child: Material(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: _importVideo,
+                                child: const SizedBox(
+                                  width: 38,
+                                  height: 38,
+                                  child: Icon(Icons.add, color: Colors.black),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+            // ── Barre d'outils ──
+            _buildActions(),
+          ],
+        ),
       ),
     );
   }

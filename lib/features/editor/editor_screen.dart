@@ -588,7 +588,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final isVideoTrack = track.type == TrackType.video;
 
     return SizedBox(
-      height: 64,
+      height: 56,
       child: Container(
         color: Colors.grey.shade900,
         child: Stack(
@@ -603,13 +603,41 @@ class _EditorScreenState extends State<EditorScreen> {
                 color: Colors.grey.shade800,
                 alignment: Alignment.center,
                 padding: const EdgeInsets.all(4),
-                child: Text(
-                  track.name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isVideoTrack
+                          ? Icons.movie_outlined
+                          : track.type == TrackType.text
+                              ? Icons.title_rounded
+                              : Icons.graphic_eq_rounded,
+                      size: 16,
+                      color: isVideoTrack
+                          ? const Color(0xFFB8F64A)
+                          : track.type == TrackType.text
+                              ? const Color(0xFFFFC857)
+                              : const Color(0xFF63C7FF),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      track.name.isEmpty
+                          ? (isVideoTrack
+                              ? 'VIDÉO'
+                              : track.type == TrackType.text
+                                  ? 'TEXTE'
+                                  : 'AUDIO')
+                          : track.name.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1675,7 +1703,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ? const Color(0xFFFF6670)
               : Colors.white70;
       return SizedBox(
-        width: 68,
+        width: 62,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onPressed,
@@ -1685,8 +1713,8 @@ class _EditorScreenState extends State<EditorScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 40,
-                  height: 36,
+                  width: 38,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: primary
                         ? const Color(0xFFB8F64A)
@@ -1846,7 +1874,7 @@ class _EditorScreenState extends State<EditorScreen> {
       body: Column(
         children: [
           Expanded(
-            flex: 5,
+            flex: 4,
             child: Container(
               width: double.infinity,
               color: const Color(0xFF08090B),
@@ -1981,7 +2009,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           Container(height: 1, color: const Color(0xFF292A2F)),
           Expanded(
-            flex: 4,
+            flex: 6,
             child: Container(
               color: const Color(0xFF111216),
               child: Column(

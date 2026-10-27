@@ -1731,72 +1731,156 @@ class _EditorScreenState extends State<EditorScreen> {
     final timelineWidth = _timelineWidth();
 
     return Scaffold(
+      backgroundColor: const Color(0xFF101114),
       appBar: AppBar(
-        title: const Text('REA — Éditeur vidéo'),
-        backgroundColor: Colors.black,
+        toolbarHeight: 58,
+        elevation: 0,
+        backgroundColor: const Color(0xFF17181C),
+        titleSpacing: 16,
+        title: const Row(
+          children: [
+            Icon(Icons.movie_creation_outlined, color: Color(0xFFB7F36B), size: 25),
+            SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('EDIT VIDEO', style: TextStyle(
+                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                )),
+                SizedBox(height: 2),
+                Text('Studio de montage', style: TextStyle(
+                  color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w400,
+                )),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            tooltip: 'Exporter',
-            icon: const Icon(
-              Icons.file_download,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.pushNamed(context, '/export');
-            },
+            tooltip: 'Exporter la vidéo',
+            icon: const Icon(Icons.file_upload_outlined, color: Color(0xFFB7F36B)),
+            onPressed: () => Navigator.pushNamed(context, '/export'),
           ),
+          const SizedBox(width: 6),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            flex: 3,
-              child: _previewWithText(
-                controller != null
-                    ? _filteredVideo(controller)
-                    : const SizedBox.expand(),
-              ),
-          ),
-          const Divider(height: 1, color: Colors.grey),
-          Expanded(
-            flex: 3,
-            child: project == null
-                ? const SizedBox.shrink()
-                : Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: timelineWidth.clamp(400.0, 1000000.0),
-                      child: Column(
-                        children: [
-                          _buildTimelineRuler(timelineWidth),
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: project.tracks.length,
-                              itemBuilder: (context, index) {
-                                return _buildTrack(
-                                  project.tracks[index],
-                                  timelineWidth,
-                                );
-                              },
-                            ),
+            flex: 5,
+            child: Container(
+              color: const Color(0xFF0B0C0E),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 9, 16, 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.play_circle_outline, size: 17, color: Color(0xFFB7F36B)),
+                        const SizedBox(width: 7),
+                        const Text('APERÇU', style: TextStyle(
+                          color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800,
+                          letterSpacing: 1.3,
+                        )),
+                        const Spacer(),
+                        Text(
+                          _formatTime(_playheadPosition),
+                          style: const TextStyle(
+                            color: Color(0xFFB7F36B), fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: ColoredBox(
+                          color: const Color(0xFF000000),
+                          child: _previewWithText(
+                            controller != null
+                                ? _filteredVideo(controller)
+                                : const SizedBox.expand(),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                _buildPlayheadControls(),
-                const Divider(height: 1),
-                SafeArea(
-                  top: false,
-                  minimum: const EdgeInsets.only(bottom: 8),
-                  child: _buildActions(),
-                ),
-              ],
+                ],
+              ),
             ),
+          ),
+          const Divider(height: 1, thickness: 1, color: Color(0xFF2A2B30)),
+          Expanded(
+            flex: 4,
+            child: project == null
+                ? const SizedBox.shrink()
+                : Container(
+                    color: const Color(0xFF151619),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.view_timeline_outlined,
+                                  color: Color(0xFFB7F36B), size: 18),
+                              const SizedBox(width: 8),
+                              const Text('TIMELINE', style: TextStyle(
+                                color: Colors.white, fontSize: 11,
+                                fontWeight: FontWeight.w800, letterSpacing: 1.2,
+                              )),
+                              const Spacer(),
+                              Text(
+                                _formatTime(project.tracks
+                                    .where((track) => track.type == TrackType.video)
+                                    .expand((track) => track.segments)
+                                    .fold<Duration>(
+                                      Duration.zero,
+                                      (total, segment) => total + _segmentDuration(segment),
+                                    )),
+                                style: const TextStyle(color: Colors.white54, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(
+                              width: timelineWidth.clamp(400.0, 1000000.0),
+                              child: Column(
+                                children: [
+                                  _buildTimelineRuler(timelineWidth),
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: project.tracks.length,
+                                      itemBuilder: (context, index) => _buildTrack(
+                                        project.tracks[index],
+                                        timelineWidth,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        _buildPlayheadControls(),
+                        const Divider(height: 1, color: Color(0xFF2A2B30)),
+                        SafeArea(
+                          top: false,
+                          minimum: const EdgeInsets.only(bottom: 5),
+                          child: _buildActions(),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),

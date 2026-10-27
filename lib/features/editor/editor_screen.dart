@@ -1662,78 +1662,133 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 8,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
-            onPressed: _importVideo,
-            icon: const Icon(Icons.video_library, size: 18),
-            label: const Text('Importer'),
+    Widget tool({
+      required IconData icon,
+      required String label,
+      required VoidCallback? onPressed,
+      bool primary = false,
+      bool danger = false,
+    }) {
+      final color = primary
+          ? const Color(0xFFB8F64A)
+          : danger
+              ? const Color(0xFFFF6670)
+              : Colors.white70;
+      return SizedBox(
+        width: 68,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: primary
+                        ? const Color(0xFFB8F64A)
+                        : const Color(0xFF25272D),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: primary
+                          ? const Color(0xFFB8F64A)
+                          : Colors.white.withOpacity(0.06),
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 19,
+                    color: primary ? const Color(0xFF11130B) : color,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: onPressed == null ? Colors.white24 : color,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addEmptySegment,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Clip vide'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: _addText,
-            icon: const Icon(Icons.title, size: 18),
-            label: const Text('Texte'),
-          ),
-          if (selected != null && !isTextSelected && selected.clip != null) ...[
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editSpeedVolume,
-              icon: const Icon(Icons.speed, size: 18),
-              label: const Text('Vitesse/Volume'),
+        ),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFF111216),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            tool(
+              icon: Icons.video_library_outlined,
+              label: 'Importer',
+              onPressed: _importVideo,
+              primary: true,
             ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: _editFilters,
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('Filtres'),
+            tool(
+              icon: Icons.add_box_outlined,
+              label: 'Clip vide',
+              onPressed: _addEmptySegment,
             ),
+            tool(
+              icon: Icons.title_rounded,
+              label: 'Texte',
+              onPressed: _addText,
+            ),
+            if (selected != null && !isTextSelected && selected.clip != null)
+              tool(
+                icon: Icons.speed_rounded,
+                label: 'Vitesse',
+                onPressed: _editSpeedVolume,
+              ),
+            if (selected != null && !isTextSelected && selected.clip != null)
+              tool(
+                icon: Icons.auto_awesome_outlined,
+                label: 'Filtres',
+                onPressed: _editFilters,
+              ),
+            if (selected != null)
+              tool(
+                icon: Icons.delete_outline_rounded,
+                label: 'Supprimer',
+                onPressed: _deleteSelected,
+                danger: true,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.arrow_back_rounded,
+                label: 'À gauche',
+                onPressed: index > 0
+                    ? () => _moveSegment(track, selected, -1)
+                    : null,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.arrow_forward_rounded,
+                label: 'À droite',
+                onPressed: index >= 0 && index < track.segments.length - 1
+                    ? () => _moveSegment(track, selected, 1)
+                    : null,
+              ),
+            if (selected != null && track != null)
+              tool(
+                icon: Icons.content_cut_rounded,
+                label: 'Rogner',
+                onPressed: selected.clip != null ? _trimSelected : null,
+              ),
           ],
-          if (selected != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Supprimer',
-              onPressed: _deleteSelected,
-              icon: const Icon(Icons.delete),
-            ),
-          ],
-          if (selected != null && track != null) ...[
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la gauche',
-              onPressed: index > 0
-                  ? () => _moveSegment(track, selected, -1)
-                  : null,
-              icon: const Icon(Icons.arrow_back),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Déplacer vers la droite',
-              onPressed: index >= 0 && index < track.segments.length - 1
-                  ? () => _moveSegment(track, selected, 1)
-                  : null,
-              icon: const Icon(Icons.arrow_forward),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonalIcon(
-              onPressed: selected.clip != null ? _trimSelected : null,
-              icon: const Icon(Icons.content_cut, size: 18),
-              label: const Text('Rogner'),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
